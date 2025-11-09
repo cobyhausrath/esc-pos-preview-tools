@@ -158,62 +158,36 @@ export class HTMLRenderer {
       line-height: 1.5;
       position: relative;
 
-      /* Simulate thermal printer texture and grain */
+      /* Simulate thermal printer texture and grain - very subtle */
       background-image:
         repeating-linear-gradient(
           0deg,
           transparent,
           transparent 1px,
-          rgba(0,0,0,0.015) 1px,
-          rgba(0,0,0,0.015) 2px
+          rgba(0,0,0,0.008) 1px,
+          rgba(0,0,0,0.008) 2px
         ),
         repeating-linear-gradient(
           90deg,
           transparent,
           transparent 1px,
-          rgba(0,0,0,0.01) 1px,
-          rgba(0,0,0,0.01) 2px
+          rgba(0,0,0,0.005) 1px,
+          rgba(0,0,0,0.005) 2px
         );
-
-      /* Add subtle paper texture noise */
-      filter: contrast(1.05);
-    }
-
-    /* Add thermal printer dithering effect to all text */
-    .receipt-container::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      pointer-events: none;
-      background-image:
-        repeating-linear-gradient(
-          0deg,
-          transparent,
-          transparent 1px,
-          rgba(0,0,0,0.02) 1px,
-          rgba(0,0,0,0.02) 2px
-        );
-      mix-blend-mode: multiply;
     }
 
     .receipt-line {
       white-space: pre-wrap;
       word-wrap: break-word;
       /* Simulate thermal printer dot matrix text */
-      color: #1a1a1a;
+      color: #000;
       text-rendering: optimizeSpeed;
       -webkit-font-smoothing: none;
       -moz-osx-font-smoothing: grayscale;
       font-smooth: never;
 
-      /* Add slight blur to simulate thermal printer resolution (203 DPI) */
-      filter: contrast(1.2) blur(0.15px);
-
-      /* Slightly reduce opacity to simulate thermal print darkness variation */
-      opacity: 0.95;
+      /* Add very slight blur to simulate thermal printer resolution (203 DPI) */
+      filter: blur(0.3px);
     }
 
     .align-left { text-align: left; }
@@ -223,26 +197,24 @@ export class HTMLRenderer {
     .size-wide {
       font-size: 200%;
       letter-spacing: 0.1em;
-      /* Larger text gets more blur/dithering */
-      filter: contrast(1.15) blur(0.2px);
+      /* Larger text gets slightly more blur */
+      filter: blur(0.35px);
     }
     .size-tall {
       font-size: 200%;
       line-height: 2;
-      filter: contrast(1.15) blur(0.2px);
+      filter: blur(0.35px);
     }
     .size-double {
       font-size: 200%;
       letter-spacing: 0.1em;
       line-height: 2;
-      filter: contrast(1.15) blur(0.2px);
+      filter: blur(0.35px);
     }
 
     strong {
       font-weight: bold;
-      /* Bold text is darker on thermal printers */
       color: #000;
-      filter: contrast(1.3) blur(0.1px);
     }
 
     u {
