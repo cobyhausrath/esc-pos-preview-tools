@@ -8,6 +8,7 @@ coverage/
 *.lcov
 .nyc_output
 test-output/
+demo-output/
 
 # Build output
 dist/

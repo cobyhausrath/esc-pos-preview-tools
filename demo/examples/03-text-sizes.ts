@@ -1,0 +1,86 @@
+/**
+ * Example 3: Text Sizes
+ * Demonstrates: Different text width and height combinations
+ */
+
+export const pythonCode = `from escpos.printer import Usb
+
+# Initialize printer
+p = Usb(0x04b8, 0x0e15)
+
+# Normal size
+p.set(width=1, height=1)
+p.text("Normal (1x1)\\n")
+
+# Double width
+p.set(width=2, height=1)
+p.text("Wide (2x1)\\n")
+
+# Double height
+p.set(width=1, height=2)
+p.text("Tall (1x2)\\n")
+
+# Double width and height
+p.set(width=2, height=2)
+p.text("Large (2x2)\\n")
+
+# Triple width
+p.set(width=3, height=1)
+p.text("XWide (3x1)\\n")
+
+# Back to normal
+p.set(width=1, height=1)
+p.text("Back to normal\\n")
+
+# Cut paper
+p.cut()
+`;
+
+export const description = `
+This example demonstrates different text sizes using the set() command:
+- Normal (1x1) - default size
+- Wide (2x1) - double width
+- Tall (1x2) - double height
+- Large (2x2) - double width and height
+- XWide (3x1) - triple width
+`;
+
+export const escPosBytes = new Uint8Array([
+  // Initialize
+  0x1b, 0x40,
+
+  // Normal size (width=1, height=1) - 0x00
+  0x1b, 0x21, 0x00,
+  // "Normal (1x1)\n"
+  0x4e, 0x6f, 0x72, 0x6d, 0x61, 0x6c, 0x20, 0x28, 0x31, 0x78, 0x31, 0x29, 0x0a,
+
+  // Double width (width=2, height=1) - 0x20
+  0x1b, 0x21, 0x20,
+  // "Wide (2x1)\n"
+  0x57, 0x69, 0x64, 0x65, 0x20, 0x28, 0x32, 0x78, 0x31, 0x29, 0x0a,
+
+  // Double height (width=1, height=2) - 0x10
+  0x1b, 0x21, 0x10,
+  // "Tall (1x2)\n"
+  0x54, 0x61, 0x6c, 0x6c, 0x20, 0x28, 0x31, 0x78, 0x32, 0x29, 0x0a,
+
+  // Double width and height (width=2, height=2) - 0x30
+  0x1b, 0x21, 0x30,
+  // "Large (2x2)\n"
+  0x4c, 0x61, 0x72, 0x67, 0x65, 0x20, 0x28, 0x32, 0x78, 0x32, 0x29, 0x0a,
+
+  // Triple width (width=3, height=1) - 0x40
+  0x1b, 0x21, 0x40,
+  // "XWide (3x1)\n"
+  0x58, 0x57, 0x69, 0x64, 0x65, 0x20, 0x28, 0x33, 0x78, 0x31, 0x29, 0x0a,
+
+  // Back to normal (width=1, height=1) - 0x00
+  0x1b, 0x21, 0x00,
+  // "Back to normal\n"
+  0x42, 0x61, 0x63, 0x6b, 0x20, 0x74, 0x6f, 0x20, 0x6e, 0x6f, 0x72, 0x6d, 0x61, 0x6c, 0x0a,
+
+  // Cut
+  0x1d, 0x56, 0x00
+]);
+
+export const title = "Text Sizes";
