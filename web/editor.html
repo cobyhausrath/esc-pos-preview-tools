@@ -524,6 +524,7 @@ result
                         if (cmd === 0x61 && i + 2 < escposBytes.length) {
                             if (currentLine) {
                                 html += this.formatLine(currentLine, currentAlign, currentBold, currentUnderline);
+                                lineCount++;
                                 currentLine = '';
                             }
                             const align = escposBytes[i + 2];
@@ -558,9 +559,11 @@ result
                         if (cmd === 0x56 && i + 2 < escposBytes.length) {
                             if (currentLine) {
                                 html += this.formatLine(currentLine, currentAlign, currentBold, currentUnderline);
+                                lineCount++;
                                 currentLine = '';
                             }
                             html += '<div class="receipt-line center">--- ✂ ---</div>';
+                            lineCount++;
                             i += 3;
                             continue;
                         }
@@ -572,6 +575,7 @@ result
                     // Line feed
                     if (byte === 0x0A) {
                         html += this.formatLine(currentLine, currentAlign, currentBold, currentUnderline);
+                        lineCount++;
                         currentLine = '';
                         i++;
                         continue;
@@ -834,15 +838,19 @@ list(p.output)
         const editor = new ReceiptEditor();
 
         window.addEventListener('load', async () => {
-            // Initialize editor
-            await editor.init();
-
-            // Setup event listeners
+            // Setup event listeners and get button references
             const editorEl = document.getElementById('editor');
             const runBtn = document.getElementById('run-btn');
             const importBtn = document.getElementById('import-btn');
             const exportBtn = document.getElementById('export-btn');
+            const shareBtn = document.getElementById('share-btn');
             const fileInput = document.getElementById('file-input');
+
+            // Disable buttons until ready
+            runBtn.disabled = true;
+            importBtn.disabled = true;
+            exportBtn.disabled = true;
+            shareBtn.disabled = true;
 
             // Run button
             runBtn.addEventListener('click', () => editor.runCode());
@@ -881,7 +889,6 @@ list(p.output)
             exportBtn.addEventListener('click', () => editor.exportFile());
 
             // Share button
-            const shareBtn = document.getElementById('share-btn');
             shareBtn.addEventListener('click', () => editor.shareCode());
 
             // Example buttons
@@ -889,11 +896,8 @@ list(p.output)
             document.getElementById('example-formatted').addEventListener('click', () => editor.loadExample('formatted'));
             document.getElementById('example-receipt').addEventListener('click', () => editor.loadExample('receipt'));
 
-            // Disable buttons until ready
-            runBtn.disabled = true;
-            importBtn.disabled = true;
-            exportBtn.disabled = true;
-            shareBtn.disabled = true;
+            // Initialize editor (this will enable buttons when ready)
+            await editor.init();
 
             // Expose for debugging
             window.receiptEditor = editor;
