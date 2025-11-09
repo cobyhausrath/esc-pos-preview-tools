@@ -320,6 +320,8 @@
                     this.updateStatus('success', 'Ready!');
                     this.isReady = true;
 
+                    console.log('init: Pyodide ready, loading default example');
+
                     // Enable buttons
                     document.getElementById('run-btn').disabled = false;
                     document.getElementById('import-btn').disabled = false;
@@ -327,6 +329,7 @@
 
                     // Load default example
                     this.loadExample('simple');
+                    console.log('init: Complete');
 
                 } catch (error) {
                     this.updateStatus('error', `Failed to initialize: ${error.message}`);
@@ -346,9 +349,13 @@
             }
 
             async runCode() {
-                if (!this.isReady) return;
+                if (!this.isReady) {
+                    console.log('runCode: Not ready yet');
+                    return;
+                }
 
                 const code = document.getElementById('editor').value;
+                console.log('runCode: Executing code, length:', code.length);
 
                 try {
                     this.updateStatus('loading', 'Executing...');
@@ -388,8 +395,13 @@ finally:
     sys.stdout = old_stdout
                     `);
 
+                    console.log('runCode: Result type:', typeof result);
+                    console.log('runCode: Result:', result);
+
                     // Convert to Uint8Array
                     const escposBytes = new Uint8Array(result);
+                    console.log('runCode: Bytes length:', escposBytes.length);
+                    console.log('runCode: First 20 bytes:', Array.from(escposBytes.slice(0, 20)));
 
                     // Render preview
                     this.renderPreview(escposBytes);
@@ -399,12 +411,13 @@ finally:
                 } catch (error) {
                     this.updateStatus('error', `✗ Error`);
                     this.showError(error.message);
-                    console.error(error);
+                    console.error('runCode error:', error);
                 }
             }
 
             renderPreview(escposBytes) {
                 // Simple ESC-POS parser and renderer
+                console.log('renderPreview: Called with', escposBytes.length, 'bytes');
                 const preview = document.getElementById('preview');
 
                 let html = '<div class="receipt-container"><div class="receipt-content">';
@@ -413,6 +426,7 @@ finally:
                 let currentUnderline = false;
                 let currentLine = '';
                 let i = 0;
+                let lineCount = 0;
 
                 while (i < escposBytes.length) {
                     const byte = escposBytes[i];
@@ -498,10 +512,15 @@ finally:
                 // Flush remaining line
                 if (currentLine) {
                     html += this.formatLine(currentLine, currentAlign, currentBold, currentUnderline);
+                    lineCount++;
                 }
 
                 html += '</div></div>';
+                console.log('renderPreview: Generated', lineCount, 'lines');
+                console.log('renderPreview: HTML length:', html.length);
+                console.log('renderPreview: HTML preview:', html.substring(0, 200));
                 preview.innerHTML = html;
+                console.log('renderPreview: Done');
             }
 
             formatLine(text, align, bold, underline) {
@@ -530,6 +549,7 @@ finally:
             }
 
             loadExample(name) {
+                console.log('loadExample:', name);
                 const examples = {
                     simple: `from escpos.printer import Dummy
 
@@ -626,14 +646,18 @@ p.cut(mode='FULL')
                 };
 
                 document.getElementById('editor').value = examples[name];
+                console.log('loadExample: Set editor value, isReady:', this.isReady);
                 if (this.isReady) {
+                    console.log('loadExample: Calling onCodeChange');
                     this.onCodeChange();
                 }
             }
 
             onCodeChange() {
+                console.log('onCodeChange: Debouncing...');
                 clearTimeout(this.debounceTimer);
                 this.debounceTimer = setTimeout(() => {
+                    console.log('onCodeChange: Debounce complete, calling runCode');
                     this.runCode();
                 }, 500); // 500ms debounce
             }
