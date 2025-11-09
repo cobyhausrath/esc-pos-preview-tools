@@ -1,0 +1,82 @@
+{
+  "name": "esc-pos-preview-tools",
+  "version": "0.1.0",
+  "description": "A comprehensive toolkit for previewing and visualizing ESC/POS printer commands without needing physical hardware",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./parser": {
+      "import": "./dist/parser/index.mjs",
+      "require": "./dist/parser/index.js",
+      "types": "./dist/parser/index.d.ts"
+    },
+    "./renderer": {
+      "import": "./dist/renderer/index.mjs",
+      "require": "./dist/renderer/index.js",
+      "types": "./dist/renderer/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,md}\"",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "esc-pos",
+    "thermal-printer",
+    "receipt-printer",
+    "preview",
+    "pos",
+    "printer",
+    "escpos",
+    "receipt",
+    "thermal",
+    "barcode",
+    "qrcode"
+  ],
+  "author": "cobyhausrath",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cobyhausrath/esc-pos-preview-tools.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cobyhausrath/esc-pos-preview-tools/issues"
+  },
+  "homepage": "https://github.com/cobyhausrath/esc-pos-preview-tools#readme",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "dependencies": {
+    "iconv-lite": "^0.6.3"
+  },
+  "peerDependencies": {},
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
