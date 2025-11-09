@@ -39,6 +39,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,json,md}\"",
     "typecheck": "tsc --noEmit",
     "preview": "tsx scripts/generate-previews.ts",
+    "demo:build": "tsx scripts/build-demo.ts",
     "feedback": "bash scripts/dev-feedback.sh",
     "prepublishOnly": "yarn build && yarn test run",
     "start": "node dist/index.js",
