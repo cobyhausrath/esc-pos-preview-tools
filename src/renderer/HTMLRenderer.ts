@@ -141,7 +141,7 @@ export class HTMLRenderer {
     body {
       margin: 0;
       padding: 20px;
-      background: #2a2a2a;
+      background: #f5f5f5;
       font-family: 'Courier New', 'Liberation Mono', monospace;
       display: flex;
       justify-content: center;
