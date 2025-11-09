@@ -364,9 +364,16 @@ old_stdout = sys.stdout
 sys.stdout = StringIO()
 
 try:
-    # Execute user code
-    p = Dummy()
-    exec("""${code.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}""")
+    # Create namespace for user code
+    namespace = {'Dummy': Dummy}
+
+    # Execute user code in namespace
+    exec("""${code.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}""", namespace)
+
+    # Get the printer instance from namespace
+    p = namespace.get('p')
+    if p is None:
+        raise Exception("Code must create a printer instance named 'p'")
 
     # Get ESC-POS output
     output_bytes = list(p.output)
