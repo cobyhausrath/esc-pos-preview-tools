@@ -257,6 +257,9 @@
                 <button id="export-btn" class="secondary" title="Export to ESC-POS">
                     💾 Export
                 </button>
+                <button id="share-btn" class="secondary" title="Copy shareable link to clipboard">
+                    🔗 Share
+                </button>
             </div>
 
             <div class="divider"></div>
@@ -304,6 +307,71 @@
                 this.isReady = false;
             }
 
+            /**
+             * Encode code to base64 for URL hash
+             * @param {string} code - The code to encode
+             * @returns {string} Base64-encoded code
+             */
+            encodeCodeToHash(code) {
+                try {
+                    // Use btoa for base64 encoding, but first encode URI components
+                    // to handle special characters properly
+                    return btoa(encodeURIComponent(code));
+                } catch (error) {
+                    console.error('Failed to encode code:', error);
+                    return '';
+                }
+            }
+
+            /**
+             * Decode code from base64 URL hash
+             * @param {string} hash - The base64 hash string
+             * @returns {string|null} Decoded code or null if invalid
+             */
+            decodeCodeFromHash(hash) {
+                try {
+                    // Decode base64 and then decode URI components
+                    return decodeURIComponent(atob(hash));
+                } catch (error) {
+                    console.error('Failed to decode hash:', error);
+                    return null;
+                }
+            }
+
+            /**
+             * Get code from URL hash parameter
+             * @returns {string|null} Code from hash or null
+             */
+            getCodeFromHash() {
+                const hash = window.location.hash;
+                if (!hash || hash.length <= 1) {
+                    return null;
+                }
+
+                // Remove '#' and parse parameter
+                const params = new URLSearchParams(hash.substring(1));
+                const codeParam = params.get('code');
+
+                if (!codeParam) {
+                    return null;
+                }
+
+                return this.decodeCodeFromHash(codeParam);
+            }
+
+            /**
+             * Update URL hash with current code
+             * @param {string} code - The code to save in hash
+             */
+            updateHash(code) {
+                const encoded = this.encodeCodeToHash(code);
+                if (encoded) {
+                    // Use replaceState to avoid adding to browser history
+                    const newHash = `#code=${encoded}`;
+                    window.history.replaceState(null, '', newHash);
+                }
+            }
+
             async init() {
                 try {
                     this.updateStatus('loading', 'Loading Pyodide...');
@@ -323,15 +391,24 @@
                     this.updateStatus('success', 'Ready!');
                     this.isReady = true;
 
-                    console.log('init: Pyodide ready, loading default example');
+                    console.log('init: Pyodide ready, checking for hash parameters');
 
                     // Enable buttons
                     document.getElementById('run-btn').disabled = false;
                     document.getElementById('import-btn').disabled = false;
                     document.getElementById('export-btn').disabled = false;
+                    document.getElementById('share-btn').disabled = false;
 
-                    // Load default example
-                    this.loadExample('simple');
+                    // Load code from hash if present, otherwise load default example
+                    const codeFromHash = this.getCodeFromHash();
+                    if (codeFromHash) {
+                        console.log('init: Loading code from hash parameter');
+                        document.getElementById('editor').value = codeFromHash;
+                        this.runCode();
+                    } else {
+                        console.log('init: No hash parameter, loading default example');
+                        this.loadExample('simple');
+                    }
                     console.log('init: Complete');
 
                 } catch (error) {
@@ -667,7 +744,9 @@ p.cut(mode='FULL')
                 console.log('onCodeChange: Debouncing...');
                 clearTimeout(this.debounceTimer);
                 this.debounceTimer = setTimeout(() => {
-                    console.log('onCodeChange: Debounce complete, calling runCode');
+                    console.log('onCodeChange: Debounce complete, calling runCode and updating hash');
+                    const code = document.getElementById('editor').value;
+                    this.updateHash(code);
                     this.runCode();
                 }, 500); // 500ms debounce
             }
@@ -714,6 +793,36 @@ list(p.output)
 
                 } catch (error) {
                     this.updateStatus('error', `Export failed: ${error.message}`);
+                }
+            }
+
+            /**
+             * Share the current code by copying URL to clipboard
+             */
+            async shareCode() {
+                try {
+                    const code = document.getElementById('editor').value;
+
+                    // Update hash to ensure URL is current
+                    this.updateHash(code);
+
+                    // Copy current URL to clipboard
+                    const url = window.location.href;
+                    await navigator.clipboard.writeText(url);
+
+                    // Show success message
+                    const originalStatus = document.getElementById('status').textContent;
+                    this.updateStatus('success', '✓ Link copied to clipboard!');
+
+                    // Restore original status after 2 seconds
+                    setTimeout(() => {
+                        if (this.isReady) {
+                            this.updateStatus('success', originalStatus);
+                        }
+                    }, 2000);
+
+                } catch (error) {
+                    this.updateStatus('error', `Share failed: ${error.message}`);
                 }
             }
         }
@@ -771,6 +880,10 @@ list(p.output)
             // Export button
             exportBtn.addEventListener('click', () => editor.exportFile());
 
+            // Share button
+            const shareBtn = document.getElementById('share-btn');
+            shareBtn.addEventListener('click', () => editor.shareCode());
+
             // Example buttons
             document.getElementById('example-simple').addEventListener('click', () => editor.loadExample('simple'));
             document.getElementById('example-formatted').addEventListener('click', () => editor.loadExample('formatted'));
@@ -780,6 +893,7 @@ list(p.output)
             runBtn.disabled = true;
             importBtn.disabled = true;
             exportBtn.disabled = true;
+            shareBtn.disabled = true;
 
             // Expose for debugging
             window.receiptEditor = editor;
