@@ -149,47 +149,23 @@ export class HTMLRenderer {
       min-height: 100vh;
     }
     .receipt-container {
-      /* Thermal paper background - slightly off-white/yellowish */
-      background: linear-gradient(to bottom, #fdfcf7 0%, #f8f7f2 100%);
+      /* Thermal paper background - subtle off-white with hint of warmth */
+      background: #fdfcfa;
       width: ${this.width * 10}px;
       padding: 20px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       font-size: 14px;
       line-height: 1.5;
       position: relative;
-
-      /* Simulate thermal printer texture and grain - very subtle */
-      background-image:
-        repeating-linear-gradient(
-          0deg,
-          transparent,
-          transparent 1px,
-          rgba(0,0,0,0.008) 1px,
-          rgba(0,0,0,0.008) 2px
-        ),
-        repeating-linear-gradient(
-          90deg,
-          transparent,
-          transparent 1px,
-          rgba(0,0,0,0.005) 1px,
-          rgba(0,0,0,0.005) 2px
-        );
     }
 
     .receipt-line {
-      position: relative;
-      z-index: 1;
       white-space: pre-wrap;
       word-wrap: break-word;
-      /* Simulate thermal printer dot matrix text */
       color: #000;
-      text-rendering: optimizeSpeed;
-      -webkit-font-smoothing: none;
+      /* Subtle thermal printer text rendering */
+      -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      font-smooth: never;
-
-      /* Add very slight blur to simulate thermal printer resolution (203 DPI) */
-      filter: blur(0.3px);
     }
 
     .align-left { text-align: left; }
@@ -199,19 +175,15 @@ export class HTMLRenderer {
     .size-wide {
       font-size: 200%;
       letter-spacing: 0.1em;
-      /* Larger text gets slightly more blur */
-      filter: blur(0.35px);
     }
     .size-tall {
       font-size: 200%;
       line-height: 2;
-      filter: blur(0.35px);
     }
     .size-double {
       font-size: 200%;
       letter-spacing: 0.1em;
       line-height: 2;
-      filter: blur(0.35px);
     }
 
     strong {
