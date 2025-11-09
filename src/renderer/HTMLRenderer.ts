@@ -157,15 +157,46 @@ export class HTMLRenderer {
       font-size: 14px;
       line-height: 1.5;
       position: relative;
+      transition: all 0.3s ease;
+    }
+
+    /* Thermal filter active state */
+    body.thermal-filter .receipt-container {
+      background: linear-gradient(to bottom, #fdfcf7 0%, #f8f7f2 100%);
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 1px,
+          rgba(0,0,0,0.012) 1px,
+          rgba(0,0,0,0.012) 2px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 1px,
+          rgba(0,0,0,0.008) 1px,
+          rgba(0,0,0,0.008) 2px
+        ),
+        linear-gradient(to bottom, #fdfcf7 0%, #f8f7f2 100%);
     }
 
     .receipt-line {
       white-space: pre-wrap;
       word-wrap: break-word;
       color: #000;
-      /* Subtle thermal printer text rendering */
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      transition: all 0.3s ease;
+    }
+
+    /* Thermal filter text effects */
+    body.thermal-filter .receipt-line {
+      -webkit-font-smoothing: none;
+      -moz-osx-font-smoothing: grayscale;
+      font-smooth: never;
+      filter: blur(0.25px);
+      letter-spacing: 0.02em;
     }
 
     .align-left { text-align: left; }
@@ -186,6 +217,12 @@ export class HTMLRenderer {
       line-height: 2;
     }
 
+    body.thermal-filter .size-wide,
+    body.thermal-filter .size-tall,
+    body.thermal-filter .size-double {
+      filter: blur(0.3px);
+    }
+
     strong {
       font-weight: bold;
       color: #000;
@@ -197,25 +234,98 @@ export class HTMLRenderer {
       text-underline-offset: 2px;
     }
 
-    /* Add info banner */
-    .thermal-info {
+    /* Control panel */
+    .controls {
       position: fixed;
       top: 10px;
       right: 10px;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.85);
       color: #fff;
-      padding: 8px 12px;
-      border-radius: 4px;
+      padding: 12px;
+      border-radius: 6px;
       font-size: 11px;
       font-family: system-ui, -apple-system, sans-serif;
       z-index: 1000;
+      min-width: 200px;
+    }
+
+    .controls h3 {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #555;
+      transition: 0.3s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: #2196F3;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    .toggle-label {
+      font-size: 11px;
+      user-select: none;
     }
   </style>
 </head>
 <body>
-  <div class="thermal-info">
-    🖨️ Thermal Printer Simulation<br>
-    Resolution: 203 DPI (80mm)
+  <div class="controls">
+    <h3>🖨️ Thermal Printer Preview</h3>
+    <div style="font-size: 10px; color: #aaa; margin-bottom: 8px;">
+      Resolution: 203 DPI (80mm)
+    </div>
+    <div class="toggle-container">
+      <label class="toggle-switch">
+        <input type="checkbox" id="thermalToggle">
+        <span class="slider"></span>
+      </label>
+      <label for="thermalToggle" class="toggle-label">Realistic Filter</label>
+    </div>
   </div>
   <div class="receipt-container">
 `;
@@ -223,6 +333,29 @@ export class HTMLRenderer {
 
   private getFooter(): string {
     return `  </div>
+  <script>
+    // Thermal filter toggle functionality
+    const toggle = document.getElementById('thermalToggle');
+    const body = document.body;
+
+    // Load saved preference from localStorage
+    const savedPreference = localStorage.getItem('thermalFilter');
+    if (savedPreference === 'true') {
+      toggle.checked = true;
+      body.classList.add('thermal-filter');
+    }
+
+    // Handle toggle changes
+    toggle.addEventListener('change', function() {
+      if (this.checked) {
+        body.classList.add('thermal-filter');
+        localStorage.setItem('thermalFilter', 'true');
+      } else {
+        body.classList.remove('thermal-filter');
+        localStorage.setItem('thermalFilter', 'false');
+      }
+    });
+  </script>
 </body>
 </html>`;
   }
