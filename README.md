@@ -1,53 +1,70 @@
 # ESC/POS Preview Tools
 
-A comprehensive toolkit for previewing and visualizing ESC/POS printer commands without needing physical hardware.
+Parse ESC/POS commands to make an HTML preview of what would be printed. Provides a passthrough socket for use with existing tools and the ability to accept/reject a previewed job before forwarding it to the printer.
 
 ## Overview
 
-ESC/POS (Epson Standard Code for Point of Sale) is a command language used by thermal receipt printers. This project provides tools to preview, debug, and test ESC/POS commands by rendering them visually in a browser or other output formats, eliminating the need for physical printers during development.
+ESC/POS (Epson Standard Code for Point of Sale) is a command language used by thermal receipt printers. This tool acts as a proxy between your POS software and the thermal printer, intercepting print jobs to display an HTML preview and allowing you to approve or reject the print before it's sent to the physical printer.
 
-## Features
+## Key Features
 
-- **Visual Preview**: Render ESC/POS commands as they would appear on thermal paper
+- **HTML Preview**: Real-time visual preview of ESC/POS commands as they would appear on thermal paper
+- **Passthrough Socket**: Transparent proxy that sits between your application and the printer
+- **Print Job Approval**: Review and approve/reject print jobs before they reach the printer
 - **Command Parser**: Parse and interpret ESC/POS byte sequences
-- **Multiple Output Formats**: Preview as HTML, image, or PDF
-- **Real-time Rendering**: See changes as you modify commands
-- **Command Inspector**: Debug and inspect individual ESC/POS commands
+- **Web Interface**: Browser-based preview and approval interface
+- **Compatible with Existing Tools**: Works seamlessly with your current POS software
 - **Multiple Printer Profiles**: Support for different printer widths and capabilities
-- **Cross-platform**: Works in browsers and Node.js environments
 
 ## Use Cases
 
-- **Development**: Test receipt layouts without physical printers
-- **Debugging**: Visualize complex ESC/POS command sequences
-- **Documentation**: Generate visual examples of receipt designs
-- **Testing**: Automated visual regression testing for receipt printing
-- **Education**: Learn ESC/POS commands with instant visual feedback
+- **Print Job Review**: Preview receipts before printing to catch errors
+- **Testing**: Test receipt layouts without wasting paper
+- **Development**: Develop and debug POS integrations without physical printers
+- **Quality Control**: Verify print output before customer-facing receipts
+- **Training**: Learn how different ESC/POS commands affect output
 
 ## Installation
-
-```bash
-npm install esc-pos-preview-tools
-```
-
-Or with yarn:
 
 ```bash
 yarn add esc-pos-preview-tools
 ```
 
+Or with npm:
+
+```bash
+npm install esc-pos-preview-tools
+```
+
 ## Quick Start
 
-```javascript
-import { ESCPOSPreview } from 'esc-pos-preview-tools';
+### As a Passthrough Proxy
 
-// Create a preview instance
-const preview = new ESCPOSPreview({
-  width: 48, // Characters per line (typically 32, 42, or 48)
-  encoding: 'cp437'
+```javascript
+import { ESCPOSProxy } from 'esc-pos-preview-tools';
+
+// Start the proxy server
+const proxy = new ESCPOSProxy({
+  listenPort: 9100,           // Port your POS software connects to
+  printerHost: '192.168.1.100', // Your actual printer's IP
+  printerPort: 9100,           // Your actual printer's port
+  webPort: 3000,               // Web interface port
+  autoApprove: false           // Require manual approval
 });
 
-// Parse and render ESC/POS commands
+proxy.start();
+
+// Configure your POS software to print to localhost:9100
+// Open http://localhost:3000 in your browser to preview and approve prints
+```
+
+### As a Library
+
+```javascript
+import { ESCPOSParser, HTMLRenderer } from 'esc-pos-preview-tools';
+
+// Parse ESC/POS commands
+const parser = new ESCPOSParser();
 const commands = Buffer.from([
   0x1B, 0x40,        // Initialize printer
   0x1B, 0x45, 0x01,  // Bold on
@@ -56,14 +73,38 @@ const commands = Buffer.from([
   0x0A               // Line feed
 ]);
 
-const result = preview.render(commands);
+const parsed = parser.parse(commands);
 
-// Output to different formats
-preview.toHTML();   // Get HTML representation
-preview.toCanvas(); // Render to HTML5 Canvas
-preview.toPNG();    // Export as PNG image
-preview.toPDF();    // Export as PDF
+// Render to HTML
+const renderer = new HTMLRenderer({ width: 48 });
+const html = renderer.render(parsed);
+console.log(html);
 ```
+
+## How It Works
+
+```
+┌─────────────┐         ┌──────────────────┐         ┌─────────────┐
+│             │         │   ESC/POS Proxy  │         │             │
+│  POS App    │────────▶│                  │────────▶│   Printer   │
+│             │  :9100  │  - Parse         │  :9100  │             │
+└─────────────┘         │  - Preview       │         └─────────────┘
+                        │  - Approve/Reject│
+                        └────────┬─────────┘
+                                 │
+                                 ▼
+                        ┌─────────────────┐
+                        │  Web Interface  │
+                        │   (Browser)     │
+                        │   :3000         │
+                        └─────────────────┘
+```
+
+1. Your POS application sends print data to the proxy (localhost:9100)
+2. The proxy parses the ESC/POS commands and generates an HTML preview
+3. The preview appears in your browser with Approve/Reject buttons
+4. If approved, the data is forwarded to the actual printer
+5. If rejected, the print job is discarded
 
 ## Supported ESC/POS Commands
 
@@ -97,9 +138,10 @@ The library aims to support the most common ESC/POS commands:
 ```
 esc-pos-preview-tools/
 ├── src/
+│   ├── proxy/          # Passthrough socket proxy server
 │   ├── parser/         # ESC/POS command parser
-│   ├── renderer/       # Rendering engine
-│   ├── exporters/      # Export to different formats
+│   ├── renderer/       # HTML rendering engine
+│   ├── web/            # Web interface for preview/approval
 │   ├── utils/          # Utility functions
 │   └── index.ts        # Main entry point
 ├── docs/               # Documentation
@@ -118,17 +160,32 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Roadmap
 
-- [ ] Core parser implementation
-- [ ] Basic text rendering
-- [ ] HTML output
-- [ ] Canvas rendering
-- [ ] Image export (PNG/JPG)
-- [ ] PDF export
-- [ ] Barcode support
-- [ ] QR code support
-- [ ] Web-based demo/playground
-- [ ] CLI tool
-- [ ] Browser extension
+### Phase 1: Core Functionality
+- [ ] ESC/POS command parser
+- [ ] HTML renderer for basic text
+- [ ] Socket passthrough proxy
+- [ ] Basic web interface for preview
+
+### Phase 2: Enhanced Rendering
+- [ ] Text formatting (bold, underline, sizes)
+- [ ] Character encodings (CP437, etc.)
+- [ ] Barcode rendering
+- [ ] QR code rendering
+- [ ] Image/logo rendering
+
+### Phase 3: User Experience
+- [ ] Print job queue management
+- [ ] Approval workflow UI
+- [ ] Print history
+- [ ] Configuration UI
+- [ ] Multiple printer support
+
+### Phase 4: Advanced Features
+- [ ] Auto-approve rules (e.g., specific job types)
+- [ ] Print job templates
+- [ ] Export preview as image/PDF
+- [ ] WebSocket for real-time updates
+- [ ] CLI for headless operation
 
 ## Resources
 

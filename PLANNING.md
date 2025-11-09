@@ -2,13 +2,47 @@
 
 ## Project Vision
 
-Build a comprehensive toolkit that allows developers to preview, debug, and test ESC/POS printer commands without physical hardware. The tool should be developer-friendly, well-documented, and support multiple output formats.
+Build a passthrough socket proxy that intercepts ESC/POS print jobs, displays an HTML preview in a web interface, and allows users to approve or reject the print before forwarding it to the actual printer. The tool should work seamlessly with existing POS software without requiring code changes.
 
 ## Technical Architecture
 
 ### Core Components
 
-#### 1. Parser Module (`src/parser/`)
+#### 1. Proxy Server Module (`src/proxy/`)
+
+**Purpose**: TCP socket server that acts as a transparent proxy between POS applications and thermal printers
+
+**Key Files**:
+- `ProxyServer.ts` - Main TCP proxy server
+- `PrintJob.ts` - Print job data model
+- `PrintQueue.ts` - Queue management for pending print jobs
+- `SocketManager.ts` - Manage connections to clients and printers
+- `JobApprovalHandler.ts` - Handle approve/reject logic
+
+**Functionality**:
+- Listen for incoming connections on configurable port (default 9100)
+- Accept ESC/POS data from POS applications
+- Forward approved data to actual printer
+- Queue print jobs awaiting approval
+- Handle connection lifecycle and errors
+- Support multiple concurrent connections
+- Timeout handling for stale jobs
+
+**Configuration**:
+```typescript
+interface ProxyConfig {
+  listenHost: string;      // Host to bind to (0.0.0.0 or localhost)
+  listenPort: number;      // Port for POS apps to connect to
+  printerHost: string;     // Actual printer IP address
+  printerPort: number;     // Actual printer port
+  webPort: number;         // Port for web interface
+  autoApprove: boolean;    // Skip approval if true
+  timeout: number;         // Job timeout in ms
+  queueSize: number;       // Max queued jobs
+}
+```
+
+#### 2. Parser Module (`src/parser/`)
 
 **Purpose**: Parse ESC/POS byte sequences into structured command objects
 
@@ -54,24 +88,23 @@ Character Set:
 - ESC R (International character set)
 ```
 
-#### 2. Renderer Module (`src/renderer/`)
+#### 3. Renderer Module (`src/renderer/`)
 
-**Purpose**: Convert parsed commands into visual representation
+**Purpose**: Convert parsed ESC/POS commands into HTML preview
 
 **Key Files**:
-- `Renderer.ts` - Main rendering engine
+- `HTMLRenderer.ts` - Main HTML rendering engine
 - `TextRenderer.ts` - Handle text rendering with formatting
 - `GraphicsRenderer.ts` - Handle images, barcodes, QR codes
-- `CanvasContext.ts` - Abstract rendering context
-- `PaperModel.ts` - Model thermal paper characteristics
+- `StyleGenerator.ts` - Generate CSS for thermal paper appearance
 
 **Functionality**:
-- Maintain paper state (width, current position, formatting)
+- Generate HTML that mimics thermal paper appearance
 - Apply text formatting (bold, size, alignment)
-- Render graphics (images, barcodes)
+- Render graphics (images, barcodes) as data URLs or SVG
 - Handle line feeds and spacing
-- Simulate thermal printer behavior
-- Track paper length
+- Create receipt-like visual output
+- Support different paper widths
 
 **Configuration Options**:
 ```typescript
@@ -82,28 +115,40 @@ interface RendererConfig {
   lineHeight: number;        // Pixels per line
   dpi: number;              // Dots per inch (203, 180)
   encoding: string;         // Default encoding
-  fontFamily: string;       // Font to use for rendering
+  fontFamily: string;       // Monospace font for thermal look
 }
 ```
 
-#### 3. Exporters Module (`src/exporters/`)
+#### 4. Web Interface Module (`src/web/`)
 
-**Purpose**: Export rendered output to various formats
+**Purpose**: Browser-based UI for previewing and approving print jobs
 
 **Key Files**:
-- `HTMLExporter.ts` - Export to HTML
-- `CanvasExporter.ts` - Export to HTML5 Canvas
-- `ImageExporter.ts` - Export to PNG/JPG
-- `PDFExporter.ts` - Export to PDF
-- `SVGExporter.ts` - Export to SVG (future)
+- `WebServer.ts` - HTTP server for web interface
+- `WebSocketHandler.ts` - Real-time updates via WebSocket
+- `APIRoutes.ts` - REST API for job management
+- `static/` - Static HTML/CSS/JS files for UI
 
 **Functionality**:
-- Convert internal representation to target format
-- Preserve formatting and styling
-- Generate downloadable files
-- Optimize output size
+- Display queued print jobs
+- Show HTML preview of each job
+- Approve/Reject buttons
+- Real-time job notifications
+- Print job history
+- Configuration interface
 
-#### 4. Utilities Module (`src/utils/`)
+**API Endpoints**:
+```
+GET  /api/jobs           - List pending jobs
+GET  /api/jobs/:id       - Get specific job details
+POST /api/jobs/:id/approve - Approve and forward to printer
+POST /api/jobs/:id/reject  - Reject and discard job
+GET  /api/history        - View print history
+GET  /api/config         - Get current configuration
+POST /api/config         - Update configuration
+```
+
+#### 5. Utilities Module (`src/utils/`)
 
 **Purpose**: Shared utility functions
 
@@ -117,213 +162,270 @@ interface RendererConfig {
 ### Data Flow
 
 ```
-ESC/POS Bytes
-    ↓
-CommandParser (parse bytes → commands)
-    ↓
-Command Objects
-    ↓
-Renderer (apply commands → visual state)
-    ↓
-Internal Representation
-    ↓
-Exporters (convert → output format)
-    ↓
-HTML | Canvas | Image | PDF
+┌──────────────┐
+│  POS App     │
+└──────┬───────┘
+       │ ESC/POS bytes via TCP
+       ↓
+┌──────────────────────┐
+│  Proxy Server        │
+│  - Receive data      │
+│  - Create print job  │
+└──────┬───────────────┘
+       │
+       ├─────────────────────────────┐
+       │                             │
+       ↓                             ↓
+┌──────────────┐            ┌────────────────┐
+│ Print Queue  │            │ Web Interface  │
+│ (pending)    │◄───────────┤ (WebSocket)    │
+└──────┬───────┘            └────────┬───────┘
+       │                             │
+       ↓                             │
+┌──────────────┐                     │
+│ Parser       │                     │
+│ (parse ESC)  │                     │
+└──────┬───────┘                     │
+       │                             │
+       ↓                             │
+┌──────────────┐                     │
+│ HTML         │                     │
+│ Renderer     │────────────────────►│
+└──────────────┘    Preview HTML     │
+                                     │
+                            User approves/rejects
+                                     │
+       ┌─────────────────────────────┘
+       │
+       ↓
+┌──────────────────┐
+│ Forward to       │
+│ Printer (9100)   │
+└──────────────────┘
 ```
 
 ## Implementation Phases
 
-### Phase 1: Foundation (Week 1-2)
+### Phase 1: Foundation & Proxy Server (Week 1-2)
 
-**Goals**: Set up project structure and core parsing
+**Goals**: Set up project structure and basic passthrough proxy
 
-- [x] Initialize npm project with TypeScript
-- [ ] Set up build tooling (tsup, esbuild, or webpack)
+- [x] Initialize project with TypeScript and Yarn
+- [ ] Set up build tooling (tsup or esbuild)
 - [ ] Configure ESLint, Prettier
-- [ ] Set up testing framework (Jest/Vitest)
-- [ ] Implement ByteStreamReader
-- [ ] Implement basic CommandParser
-- [ ] Define CommandTypes interfaces
-- [ ] Write unit tests for parser
+- [ ] Set up testing framework (Vitest)
+- [ ] Implement basic TCP proxy server
+- [ ] Accept connections and forward data
+- [ ] Handle printer connection
+- [ ] Basic error handling and logging
 
 **Deliverables**:
 - Project skeleton
-- Basic parser that can identify commands
-- Unit tests with >80% coverage
+- Working passthrough proxy (no preview yet)
+- Basic tests
 
-### Phase 2: Text Rendering (Week 3-4)
+### Phase 2: Parser & HTML Rendering (Week 3-4)
 
-**Goals**: Render basic text with formatting
+**Goals**: Parse ESC/POS and generate HTML preview
 
-- [ ] Implement TextRenderer
-- [ ] Support basic text commands
+- [ ] Implement ByteStreamReader
+- [ ] Implement CommandParser for basic commands
+- [ ] Define CommandTypes interfaces
+- [ ] Implement HTMLRenderer for text
+- [ ] Support basic text formatting (bold, size)
 - [ ] Handle character encodings (CP437)
-- [ ] Implement formatting (bold, underline, size)
-- [ ] Implement text alignment
-- [ ] Create HTMLExporter for text
-- [ ] Write integration tests
+- [ ] Generate thermal paper-styled HTML
+- [ ] Write parser and renderer tests
 
 **Deliverables**:
-- Working text rendering
-- HTML output of formatted text
-- Examples showing various text formats
+- Working parser for common commands
+- HTML preview of text content
+- Thermal paper CSS styling
 
-### Phase 3: Canvas & Image Export (Week 5-6)
+### Phase 3: Web Interface (Week 5-6)
 
-**Goals**: Visual output in multiple formats
+**Goals**: Build approval UI
 
-- [ ] Implement CanvasExporter
-- [ ] Render to HTML5 Canvas
-- [ ] Implement ImageExporter (PNG)
-- [ ] Generate downloadable images
-- [ ] Add paper dimensions and scaling
-- [ ] Create visual regression tests
-
-**Deliverables**:
-- Canvas rendering
-- Image export functionality
-- Visual test suite
-
-### Phase 4: Graphics Support (Week 7-8)
-
-**Goals**: Support barcodes and images
-
-- [ ] Implement raster image parsing
-- [ ] Render bitmap images
-- [ ] Add barcode generation
-- [ ] Add QR code generation
-- [ ] Support various barcode formats
-- [ ] Write tests for graphics
+- [ ] Implement HTTP server for web UI
+- [ ] Create print job queue system
+- [ ] Build preview page with approve/reject buttons
+- [ ] Implement WebSocket for real-time updates
+- [ ] Create REST API endpoints
+- [ ] Add basic job management UI
+- [ ] Integrate preview with approval workflow
 
 **Deliverables**:
-- Full graphics rendering
-- Barcode/QR code support
-- Updated examples
+- Working web interface
+- Job queue management
+- Approve/reject functionality
+- End-to-end working system
 
-### Phase 5: PDF Export (Week 9)
+### Phase 4: Enhanced Rendering (Week 7-8)
 
-**Goals**: Professional PDF output
+**Goals**: Support graphics and advanced formatting
 
-- [ ] Implement PDFExporter
-- [ ] Generate PDF documents
-- [ ] Preserve formatting in PDF
-- [ ] Add page breaks
-- [ ] Optimize PDF size
-
-**Deliverables**:
-- PDF export functionality
-- PDF examples
-
-### Phase 6: Web Interface (Week 10-11)
-
-**Goals**: Interactive web playground
-
-- [ ] Create React/Vue-based UI
-- [ ] Live preview editor
-- [ ] Command inspector
-- [ ] Example gallery
-- [ ] Export controls
-- [ ] Deploy to GitHub Pages
+- [ ] Implement barcode rendering (Code39, Code128, EAN)
+- [ ] Add QR code support
+- [ ] Render raster/bitmap images
+- [ ] Support text alignment
+- [ ] Handle underline, reverse printing
+- [ ] Add logo/image caching
+- [ ] Test with real POS receipts
 
 **Deliverables**:
-- Web-based playground
-- Online demo
+- Full graphics support
+- Comprehensive receipt rendering
+- Real-world compatibility
 
-### Phase 7: CLI Tool (Week 12)
+### Phase 5: User Experience (Week 9-10)
 
-**Goals**: Command-line interface
+**Goals**: Improve usability and features
 
-- [ ] Create CLI wrapper
-- [ ] Support file input
-- [ ] Multiple output formats
-- [ ] Batch processing
-- [ ] Publish to npm
+- [ ] Add print job history
+- [ ] Implement auto-approve rules
+- [ ] Add configuration UI
+- [ ] Support multiple printer profiles
+- [ ] Add keyboard shortcuts
+- [ ] Improve preview styling
+- [ ] Add print queue management
+
+**Deliverables**:
+- Polished UI
+- History and logging
+- Configuration system
+
+### Phase 6: CLI & Standalone Mode (Week 11)
+
+**Goals**: Support headless operation
+
+- [ ] Create CLI for starting proxy
+- [ ] Support config file
+- [ ] Add auto-approve mode
+- [ ] Logging options
+- [ ] Daemon mode
+- [ ] System service templates
 
 **Deliverables**:
 - CLI tool
-- npm package
+- Headless operation mode
+- Service deployment guides
 
-### Phase 8: Polish & Documentation (Week 13-14)
+### Phase 7: Testing & Optimization (Week 12)
 
-**Goals**: Production-ready release
+**Goals**: Ensure reliability and performance
 
-- [ ] Comprehensive documentation
+- [ ] Integration tests for full workflow
+- [ ] Load testing with multiple jobs
+- [ ] Memory leak detection
+- [ ] Optimize rendering performance
+- [ ] Handle edge cases
+- [ ] Cross-platform testing
+
+**Deliverables**:
+- Comprehensive test suite
+- Performance benchmarks
+- Bug fixes
+
+### Phase 8: Documentation & Release (Week 13-14)
+
+**Goals**: Production-ready v1.0 release
+
+- [ ] Complete user documentation
 - [ ] API reference
-- [ ] Usage examples
-- [ ] Performance optimization
+- [ ] Deployment guides
+- [ ] Video tutorials
+- [ ] Example configurations
 - [ ] Security audit
-- [ ] Prepare v1.0 release
+- [ ] Publish to npm
 
 **Deliverables**:
 - Complete documentation
 - Published v1.0 package
+- Production-ready tool
 
 ## Technology Stack
 
 ### Core
 - **Language**: TypeScript
+- **Runtime**: Node.js 16+
 - **Build Tool**: tsup or esbuild
-- **Package Manager**: npm or yarn
-- **Testing**: Vitest or Jest
+- **Package Manager**: Yarn
+- **Testing**: Vitest
 
-### Dependencies
-- **Canvas Rendering**: html2canvas or native Canvas API
-- **PDF Generation**: jsPDF or pdfkit
-- **Image Processing**: sharp (Node.js) or browser Canvas API
-- **Barcode Generation**: jsbarcode
-- **QR Code**: qrcode or qr-image
+### Server Dependencies
+- **TCP Server**: Node.js `net` module (built-in)
+- **HTTP Server**: Express or Fastify
+- **WebSocket**: ws or socket.io
 - **Encoding**: iconv-lite
 
+### Rendering Dependencies
+- **Barcode Generation**: jsbarcode or bwip-js
+- **QR Code**: qrcode
+- **HTML Templates**: Handlebars or EJS (optional)
+
 ### Development
-- **Linting**: ESLint
+- **Linting**: ESLint with TypeScript plugin
 - **Formatting**: Prettier
 - **Type Checking**: TypeScript strict mode
 - **Documentation**: TypeDoc
 - **CI/CD**: GitHub Actions
 
-### Web Interface (Optional)
-- **Framework**: React or Vue.js
-- **Build**: Vite
-- **Styling**: Tailwind CSS or CSS Modules
-- **Hosting**: GitHub Pages or Vercel
+### Web Interface
+- **Backend**: Express
+- **Frontend**: Vanilla JS or lightweight framework (Alpine.js)
+- **Styling**: CSS with thermal paper theme
+- **Real-time**: WebSocket for live updates
 
 ## API Design
 
-### Main API
+### Proxy Server API
 
 ```typescript
-import { ESCPOSPreview } from 'esc-pos-preview-tools';
+import { ESCPOSProxy } from 'esc-pos-preview-tools';
 
-// Initialize
-const preview = new ESCPOSPreview({
-  width: 48,
-  encoding: 'cp437',
-  dpi: 203
+// Start proxy server
+const proxy = new ESCPOSProxy({
+  listenHost: '0.0.0.0',
+  listenPort: 9100,
+  printerHost: '192.168.1.100',
+  printerPort: 9100,
+  webPort: 3000,
+  autoApprove: false,
+  timeout: 30000,
+  queueSize: 100
 });
 
-// Parse and render
-preview.load(escposBytes);
-preview.render();
+// Event handlers
+proxy.on('job:received', (job) => {
+  console.log('New print job:', job.id);
+});
 
-// Export
-const html = preview.toHTML();
-const canvas = preview.toCanvas();
-const png = await preview.toPNG();
-const pdf = await preview.toPDF();
+proxy.on('job:approved', (job) => {
+  console.log('Job approved:', job.id);
+});
 
-// Inspect commands
-const commands = preview.getCommands();
-const state = preview.getState();
+proxy.on('job:rejected', (job) => {
+  console.log('Job rejected:', job.id);
+});
+
+proxy.on('error', (error) => {
+  console.error('Proxy error:', error);
+});
+
+// Start server
+await proxy.start();
+
+// Stop server
+await proxy.stop();
 ```
 
-### Parser API
+### Parser API (Library Usage)
 
 ```typescript
-import { CommandParser } from 'esc-pos-preview-tools/parser';
+import { ESCPOSParser } from 'esc-pos-preview-tools/parser';
 
-const parser = new CommandParser();
-const commands = parser.parse(escposBytes);
+const parser = new ESCPOSParser();
+const commands = parser.parse(buffer);
 
 // Get detailed command info
 commands.forEach(cmd => {
@@ -331,16 +433,44 @@ commands.forEach(cmd => {
 });
 ```
 
-### Renderer API
+### Renderer API (Library Usage)
 
 ```typescript
-import { Renderer } from 'esc-pos-preview-tools/renderer';
+import { HTMLRenderer } from 'esc-pos-preview-tools/renderer';
 
-const renderer = new Renderer({ width: 48 });
-renderer.execute(commands);
+const renderer = new HTMLRenderer({
+  width: 48,
+  encoding: 'cp437'
+});
 
-const output = renderer.getOutput();
-const paperHeight = renderer.getPaperHeight();
+const html = renderer.render(commands);
+console.log(html);
+```
+
+### REST API (Web Interface)
+
+```
+GET  /api/jobs
+     Response: { jobs: [{ id, timestamp, status, preview }] }
+
+GET  /api/jobs/:id
+     Response: { id, timestamp, status, rawData, preview, commands }
+
+POST /api/jobs/:id/approve
+     Response: { success: true, message: "Job sent to printer" }
+
+POST /api/jobs/:id/reject
+     Response: { success: true, message: "Job discarded" }
+
+GET  /api/history
+     Response: { jobs: [...], total, page, pageSize }
+
+GET  /api/config
+     Response: { listenPort, printerHost, printerPort, autoApprove, ... }
+
+POST /api/config
+     Body: { autoApprove: true, ... }
+     Response: { success: true, config: {...} }
 ```
 
 ## Testing Strategy

@@ -1,7 +1,7 @@
 {
   "name": "esc-pos-preview-tools",
   "version": "0.1.0",
-  "description": "A comprehensive toolkit for previewing and visualizing ESC/POS printer commands without needing physical hardware",
+  "description": "Parses ESC POS commands to make an HTML preview of what would be printed. Provides a passthrough socket for use with existing tools and the ability to accept/reject a previewed job before forwarding it to the printer.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -37,7 +37,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,json,md}\"",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "yarn build && yarn test",
+    "start": "node dist/index.js",
+    "start:dev": "tsup --watch & node --watch dist/index.js"
   },
   "keywords": [
     "esc-pos",
@@ -50,7 +52,13 @@
     "receipt",
     "thermal",
     "barcode",
-    "qrcode"
+    "qrcode",
+    "proxy",
+    "passthrough",
+    "print-preview",
+    "socket",
+    "tcp-proxy",
+    "print-approval"
   ],
   "author": "cobyhausrath",
   "license": "MIT",
@@ -63,7 +71,9 @@
   },
   "homepage": "https://github.com/cobyhausrath/esc-pos-preview-tools#readme",
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
@@ -73,10 +83,13 @@
     "vitest": "^1.0.0"
   },
   "dependencies": {
-    "iconv-lite": "^0.6.3"
+    "express": "^4.18.2",
+    "iconv-lite": "^0.6.3",
+    "ws": "^8.16.0"
   },
   "peerDependencies": {},
   "engines": {
     "node": ">=16.0.0"
-  }
+  },
+  "packageManager": "yarn@1.22.19"
 }
