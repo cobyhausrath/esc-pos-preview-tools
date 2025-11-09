@@ -7,19 +7,19 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     },
     "./parser": {
+      "types": "./dist/parser/index.d.ts",
       "import": "./dist/parser/index.mjs",
-      "require": "./dist/parser/index.js",
-      "types": "./dist/parser/index.d.ts"
+      "require": "./dist/parser/index.js"
     },
     "./renderer": {
+      "types": "./dist/renderer/index.d.ts",
       "import": "./dist/renderer/index.mjs",
-      "require": "./dist/renderer/index.js",
-      "types": "./dist/renderer/index.d.ts"
+      "require": "./dist/renderer/index.js"
     }
   },
   "files": [

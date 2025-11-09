@@ -136,55 +136,141 @@ export class HTMLRenderer {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ESC/POS Preview</title>
+  <title>ESC/POS Preview - Thermal Printer Simulation</title>
   <style>
     body {
       margin: 0;
       padding: 20px;
-      background: #f0f0f0;
-      font-family: monospace;
+      background: #2a2a2a;
+      font-family: 'Courier New', 'Liberation Mono', monospace;
       display: flex;
       justify-content: center;
       align-items: flex-start;
       min-height: 100vh;
     }
     .receipt-container {
-      background: white;
+      /* Thermal paper background - slightly off-white/yellowish */
+      background: linear-gradient(to bottom, #fdfcf7 0%, #f8f7f2 100%);
       width: ${this.width * 10}px;
       padding: 20px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
       font-size: 14px;
       line-height: 1.5;
+      position: relative;
+
+      /* Simulate thermal printer texture and grain */
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 1px,
+          rgba(0,0,0,0.015) 1px,
+          rgba(0,0,0,0.015) 2px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 1px,
+          rgba(0,0,0,0.01) 1px,
+          rgba(0,0,0,0.01) 2px
+        );
+
+      /* Add subtle paper texture noise */
+      filter: contrast(1.05);
     }
+
+    /* Add thermal printer dithering effect to all text */
+    .receipt-container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 1px,
+          rgba(0,0,0,0.02) 1px,
+          rgba(0,0,0,0.02) 2px
+        );
+      mix-blend-mode: multiply;
+    }
+
     .receipt-line {
       white-space: pre-wrap;
       word-wrap: break-word;
+      /* Simulate thermal printer dot matrix text */
+      color: #1a1a1a;
+      text-rendering: optimizeSpeed;
+      -webkit-font-smoothing: none;
+      -moz-osx-font-smoothing: grayscale;
+      font-smooth: never;
+
+      /* Add slight blur to simulate thermal printer resolution (203 DPI) */
+      filter: contrast(1.2) blur(0.15px);
+
+      /* Slightly reduce opacity to simulate thermal print darkness variation */
+      opacity: 0.95;
     }
+
     .align-left { text-align: left; }
     .align-center { text-align: center; }
     .align-right { text-align: right; }
+
     .size-wide {
       font-size: 200%;
       letter-spacing: 0.1em;
+      /* Larger text gets more blur/dithering */
+      filter: contrast(1.15) blur(0.2px);
     }
     .size-tall {
       font-size: 200%;
       line-height: 2;
+      filter: contrast(1.15) blur(0.2px);
     }
     .size-double {
       font-size: 200%;
       letter-spacing: 0.1em;
       line-height: 2;
+      filter: contrast(1.15) blur(0.2px);
     }
+
     strong {
       font-weight: bold;
+      /* Bold text is darker on thermal printers */
+      color: #000;
+      filter: contrast(1.3) blur(0.1px);
     }
+
     u {
       text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    /* Add info banner */
+    .thermal-info {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: system-ui, -apple-system, sans-serif;
+      z-index: 1000;
     }
   </style>
 </head>
 <body>
+  <div class="thermal-info">
+    🖨️ Thermal Printer Simulation<br>
+    Resolution: 203 DPI (80mm)
+  </div>
   <div class="receipt-container">
 `;
   }
