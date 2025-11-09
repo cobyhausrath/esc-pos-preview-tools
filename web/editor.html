@@ -378,8 +378,8 @@ try:
     # Create namespace for user code
     namespace = {'Dummy': Dummy}
 
-    # Execute user code in namespace
-    exec("""${code.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}""", namespace)
+    # Execute user code in namespace (using JSON.stringify for safe escaping)
+    exec(${JSON.stringify(code)}, namespace)
 
     # Get the printer instance from namespace
     p = namespace.get('p')
@@ -525,6 +525,14 @@ result
                 console.log('renderPreview: Done');
             }
 
+            /**
+             * Format a line of receipt text with styling
+             * @param {string} text - The text content
+             * @param {string} align - Alignment: 'left', 'center', or 'right'
+             * @param {boolean} bold - Whether text should be bold
+             * @param {boolean} underline - Whether text should be underlined
+             * @returns {string} HTML string for the formatted line
+             */
             formatLine(text, align, bold, underline) {
                 if (!text && text !== '') return '';
 
@@ -687,7 +695,7 @@ p.cut(mode='FULL')
                     const result = await this.pyodide.runPythonAsync(`
 from escpos.printer import Dummy
 p = Dummy()
-exec("""${code.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}""")
+exec(${JSON.stringify(code)})
 list(p.output)
                     `);
 

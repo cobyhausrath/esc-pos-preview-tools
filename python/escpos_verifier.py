@@ -15,8 +15,22 @@ Usage:
 """
 
 import io
+import ast
+import logging
 from typing import List, Tuple, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from escpos_constants import (
+    ESC, GS, LF, CR,
+    ESC_INIT, ESC_BOLD, ESC_UNDERLINE, ESC_ALIGN, ESC_PRINT_MODE,
+    GS_CUT, GS_CHAR_SIZE,
+    BOLD_ON, UNDERLINE_OFF,
+    ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT, ALIGN_VALUE_TO_NAME,
+    CUT_PARTIAL, CUT_PARTIAL_ASCII, CUT_VALUE_TO_MODE,
+    PRINT_MODE_BOLD, PRINT_MODE_DOUBLE_HEIGHT, PRINT_MODE_DOUBLE_WIDTH,
+    ASCII_PRINTABLE_START, ASCII_PRINTABLE_END,
+    MAX_INPUT_SIZE
+)
 
 
 @dataclass
@@ -33,9 +47,11 @@ class EscPosVerifier:
     Bidirectional converter and verifier between ESC-POS bytes and python-escpos API
     """
 
-    def __init__(self):
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        self.logger = logger or logging.getLogger(__name__)
         self.position = 0
         self.commands: List[ParsedCommand] = []
+        self.warnings: List[str] = []
 
     def parse_escpos(self, data: bytes) -> List[ParsedCommand]:
         """
@@ -46,41 +62,59 @@ class EscPosVerifier:
 
         Returns:
             List of ParsedCommand objects
+
+        Raises:
+            TypeError: If data is not bytes
+            ValueError: If data exceeds maximum size
         """
+        # Input validation
+        if not isinstance(data, bytes):
+            raise TypeError(f"Expected bytes, got {type(data).__name__}")
+        if len(data) > MAX_INPUT_SIZE:
+            raise ValueError(f"ESC-POS data too large (>{MAX_INPUT_SIZE} bytes)")
+
+        self.logger.debug(f"Parsing {len(data)} bytes of ESC-POS data")
         self.position = 0
         self.commands = []
+        self.warnings = []
 
         while self.position < len(data):
-            # Check for ESC sequences (0x1B)
-            if data[self.position] == 0x1B:
+            # Check for ESC sequences
+            if data[self.position] == ESC:
                 self._parse_esc_sequence(data)
-            # Check for GS sequences (0x1D)
-            elif data[self.position] == 0x1D:
+            # Check for GS sequences
+            elif data[self.position] == GS:
                 self._parse_gs_sequence(data)
             # Line feed
-            elif data[self.position] == 0x0A:
+            elif data[self.position] == LF:
                 self.commands.append(ParsedCommand(
                     name="line_feed",
-                    escpos_bytes=bytes([0x0A]),
+                    escpos_bytes=bytes([LF]),
                     python_call="p.text('\\n')",
                     params={}
                 ))
                 self.position += 1
             # Carriage return
-            elif data[self.position] == 0x0D:
+            elif data[self.position] == CR:
                 # Often paired with LF, skip it
                 self.position += 1
             # Plain text
-            elif 0x20 <= data[self.position] <= 0x7E:
+            elif ASCII_PRINTABLE_START <= data[self.position] <= ASCII_PRINTABLE_END:
                 self._parse_text(data)
             else:
-                # Unknown byte, skip it
+                # Unknown byte, track for debugging
+                warning = f"Unknown byte 0x{data[self.position]:02X} at position {self.position}"
+                self.warnings.append(warning)
+                self.logger.warning(warning)
                 self.position += 1
+
+        if self.warnings:
+            self.logger.info(f"Parsing completed with {len(self.warnings)} warning(s)")
 
         return self.commands
 
     def _parse_esc_sequence(self, data: bytes):
-        """Parse ESC (0x1B) sequences"""
+        """Parse ESC sequences"""
         if self.position + 1 >= len(data):
             self.position += 1
             return
@@ -88,17 +122,18 @@ class EscPosVerifier:
         command = data[self.position + 1]
 
         # ESC @ - Initialize printer
-        if command == 0x40:
+        if command == ESC_INIT:
             self.commands.append(ParsedCommand(
                 name="initialize",
-                escpos_bytes=bytes([0x1B, 0x40]),
+                escpos_bytes=bytes([ESC, ESC_INIT]),
                 python_call="p.hw('init')",
                 params={}
             ))
             self.position += 2
+            self.logger.debug("Parsed initialize command")
 
         # ESC E - Bold on/off
-        elif command == 0x45:
+        elif command == ESC_BOLD:
             if self.position + 2 >= len(data):
                 self.position += 2
                 return
@@ -106,14 +141,15 @@ class EscPosVerifier:
             enabled = value != 0
             self.commands.append(ParsedCommand(
                 name="bold",
-                escpos_bytes=bytes([0x1B, 0x45, value]),
+                escpos_bytes=bytes([ESC, ESC_BOLD, value]),
                 python_call=f"p.set(bold={str(enabled)})",
                 params={"enabled": enabled}
             ))
             self.position += 3
+            self.logger.debug(f"Parsed bold command: {enabled}")
 
         # ESC - - Underline on/off
-        elif command == 0x2D:
+        elif command == ESC_UNDERLINE:
             if self.position + 2 >= len(data):
                 self.position += 2
                 return
@@ -121,45 +157,46 @@ class EscPosVerifier:
             # value: 0=off, 1=on (1-dot), 2=on (2-dot)
             self.commands.append(ParsedCommand(
                 name="underline",
-                escpos_bytes=bytes([0x1B, 0x2D, value]),
+                escpos_bytes=bytes([ESC, ESC_UNDERLINE, value]),
                 python_call=f"p.set(underline={value})",
                 params={"mode": value}
             ))
             self.position += 3
+            self.logger.debug(f"Parsed underline command: {value}")
 
         # ESC a - Alignment
-        elif command == 0x61:
+        elif command == ESC_ALIGN:
             if self.position + 2 >= len(data):
                 self.position += 2
                 return
             value = data[self.position + 2]
-            align_map = {0: 'left', 1: 'center', 2: 'right'}
-            align = align_map.get(value, 'left')
+            align = ALIGN_VALUE_TO_NAME.get(value, 'left')
             self.commands.append(ParsedCommand(
                 name="align",
-                escpos_bytes=bytes([0x1B, 0x61, value]),
+                escpos_bytes=bytes([ESC, ESC_ALIGN, value]),
                 python_call=f"p.set(align='{align}')",
                 params={"align": align}
             ))
             self.position += 3
+            self.logger.debug(f"Parsed alignment command: {align}")
 
         # ESC ! - Print mode (size, bold, etc.)
-        elif command == 0x21:
+        elif command == ESC_PRINT_MODE:
             if self.position + 2 >= len(data):
                 self.position += 2
                 return
             value = data[self.position + 2]
 
-            # Parse the mode byte
+            # Parse the mode byte using constants
             # Bit 0: Character font (ignored)
             # Bit 3: Bold
             # Bit 4: Double height
             # Bit 5: Double width
             # Bit 7: Underline (ignored, use ESC -)
 
-            bold = bool(value & 0x08)
-            double_height = bool(value & 0x10)
-            double_width = bool(value & 0x20)
+            bold = bool(value & PRINT_MODE_BOLD)
+            double_height = bool(value & PRINT_MODE_DOUBLE_HEIGHT)
+            double_width = bool(value & PRINT_MODE_DOUBLE_WIDTH)
 
             # Determine size string for python-escpos
             if double_height and double_width:
@@ -182,18 +219,22 @@ class EscPosVerifier:
 
             self.commands.append(ParsedCommand(
                 name="print_mode",
-                escpos_bytes=bytes([0x1B, 0x21, value]),
+                escpos_bytes=bytes([ESC, ESC_PRINT_MODE, value]),
                 python_call=python_call,
                 params={"mode": value, "bold": bold, "size": size}
             ))
             self.position += 3
+            self.logger.debug(f"Parsed print mode: bold={bold}, size={size}")
 
         else:
             # Unknown ESC command
+            warning = f"Unknown ESC command 0x{command:02X} at position {self.position}"
+            self.warnings.append(warning)
+            self.logger.warning(warning)
             self.position += 2
 
     def _parse_gs_sequence(self, data: bytes):
-        """Parse GS (0x1D) sequences"""
+        """Parse GS sequences"""
         if self.position + 1 >= len(data):
             self.position += 1
             return
@@ -201,23 +242,23 @@ class EscPosVerifier:
         command = data[self.position + 1]
 
         # GS V - Paper cut
-        if command == 0x56:
+        if command == GS_CUT:
             if self.position + 2 >= len(data):
                 self.position += 2
                 return
             mode = data[self.position + 2]
-            # mode: 0 or 48='0' = full cut, 1 or 49='1' = partial cut
-            cut_mode = 'PART' if mode in [1, 49] else 'FULL'
+            cut_mode = CUT_VALUE_TO_MODE.get(mode, 'FULL')
             self.commands.append(ParsedCommand(
                 name="cut",
-                escpos_bytes=bytes([0x1D, 0x56, mode]),
+                escpos_bytes=bytes([GS, GS_CUT, mode]),
                 python_call=f"p.cut(mode='{cut_mode}')",
                 params={"mode": cut_mode}
             ))
             self.position += 3
+            self.logger.debug(f"Parsed cut command: {cut_mode}")
 
         # GS ! - Character size
-        elif command == 0x21:
+        elif command == GS_CHAR_SIZE:
             if self.position + 2 >= len(data):
                 self.position += 2
                 return
@@ -229,21 +270,25 @@ class EscPosVerifier:
 
             self.commands.append(ParsedCommand(
                 name="size",
-                escpos_bytes=bytes([0x1D, 0x21, value]),
+                escpos_bytes=bytes([GS, GS_CHAR_SIZE, value]),
                 python_call=f"p.set(width={width}, height={height})",
                 params={"width": width, "height": height}
             ))
             self.position += 3
+            self.logger.debug(f"Parsed size command: width={width}, height={height}")
 
         else:
             # Unknown GS command
+            warning = f"Unknown GS command 0x{command:02X} at position {self.position}"
+            self.warnings.append(warning)
+            self.logger.warning(warning)
             self.position += 2
 
     def _parse_text(self, data: bytes):
         """Parse plain text"""
         start = self.position
         while (self.position < len(data) and
-               0x20 <= data[self.position] <= 0x7E):
+               ASCII_PRINTABLE_START <= data[self.position] <= ASCII_PRINTABLE_END):
             self.position += 1
 
         text_bytes = data[start:self.position]
@@ -258,6 +303,7 @@ class EscPosVerifier:
             python_call=f"p.text('{escaped_text}')",
             params={"text": text}
         ))
+        self.logger.debug(f"Parsed text: {len(text)} characters")
 
     def generate_python_code(self, commands: List[ParsedCommand],
                             printer_class: str = "Dummy") -> str:
@@ -291,30 +337,93 @@ class EscPosVerifier:
 
         return "\n".join(lines)
 
-    def execute_python_code(self, code: str) -> bytes:
+    def validate_python_code(self, code: str) -> Tuple[bool, str]:
+        """
+        Validate Python code using AST parsing before execution
+
+        This provides a basic security check to ensure the code only contains
+        allowed python-escpos operations.
+
+        Args:
+            code: Python code string to validate
+
+        Returns:
+            Tuple of (is_valid: bool, message: str)
+        """
+        try:
+            tree = ast.parse(code)
+
+            # Check for dangerous operations
+            dangerous_ops = []
+
+            for node in ast.walk(tree):
+                # Check for dangerous imports
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name not in ['escpos.printer', 'escpos']:
+                            dangerous_ops.append(f"Import not allowed: {alias.name}")
+
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and not node.module.startswith('escpos'):
+                        dangerous_ops.append(f"Import from not allowed: {node.module}")
+
+                # Check for file operations
+                elif isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Name):
+                        if node.func.id in ['open', 'exec', 'eval', 'compile', '__import__']:
+                            dangerous_ops.append(f"Dangerous function call: {node.func.id}")
+
+            if dangerous_ops:
+                return False, "Security validation failed:\n" + "\n".join(dangerous_ops)
+
+            return True, "Code validation passed"
+
+        except SyntaxError as e:
+            return False, f"Syntax error: {e}"
+
+    def execute_python_code(self, code: str, validate: bool = True) -> bytes:
         """
         Execute python-escpos code and return generated bytes
 
+        WARNING: This function executes arbitrary Python code. Only execute code
+        from trusted sources. Use validate=True (default) for basic security checks.
+
         Args:
             code: Python code string to execute
+            validate: Whether to validate code before execution (default: True)
 
         Returns:
             Generated ESC-POS bytes
+
+        Raises:
+            RuntimeError: If code execution fails or validation fails
         """
+        # Validate code if requested
+        if validate:
+            is_valid, message = self.validate_python_code(code)
+            if not is_valid:
+                self.logger.error(f"Code validation failed: {message}")
+                raise RuntimeError(f"Code validation failed: {message}")
+            self.logger.debug("Code validation passed")
+
         try:
             # Import required modules for execution context
             from escpos.printer import Dummy
 
-            # Create execution context
+            # Create execution context with minimal namespace
             local_vars = {}
 
+            self.logger.debug("Executing python-escpos code")
             # Execute the generated code
             exec(code, {"Dummy": Dummy}, local_vars)
 
             # Return the captured output
-            return local_vars.get('escpos_output', b'')
+            result = local_vars.get('escpos_output', b'')
+            self.logger.debug(f"Execution completed, generated {len(result)} bytes")
+            return result
 
         except Exception as e:
+            self.logger.error(f"Code execution failed: {e}")
             raise RuntimeError(f"Failed to execute python-escpos code: {e}")
 
     def verify(self, original_bytes: bytes, generated_code: str,
