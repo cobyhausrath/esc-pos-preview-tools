@@ -1,8 +1,24 @@
-# ESC/POS Preview Tools - Implementation Plan
+# ESC/POS Preview Tools - Future Vision
 
-## Project Vision
+> ⚠️ **IMPORTANT**: This document describes **future plans** and **potential features** that are **NOT yet implemented**.
+>
+> **For current project status**: See [PROJECT_STATUS.md](PROJECT_STATUS.md)
+> **For what exists now**: See [README.md](README.md)
+> **To get started**: See [QUICKSTART.md](QUICKSTART.md)
 
-Build a passthrough socket proxy that intercepts ESC/POS print jobs, displays an HTML preview in a web interface, and allows users to approve or reject the print before forwarding it to the actual printer. The tool should work seamlessly with existing POS software without requiring code changes.
+---
+
+## Long-term Vision
+
+**Original concept**: Build a passthrough socket proxy that intercepts ESC/POS print jobs, displays an HTML preview in a web interface, and allows users to approve or reject the print before forwarding it to the actual printer. The tool should work seamlessly with existing POS software without requiring code changes.
+
+**Current reality**: We have built a solid parser/renderer library with Python tools. The proxy server concept remains a future possibility that may or may not be implemented depending on user needs.
+
+---
+
+## What This Document Contains
+
+This document preserves the original architectural vision for a full ESC-POS proxy server. Most features described here **do not exist yet**. Think of this as a potential roadmap, not a promise.
 
 ## Technical Architecture
 

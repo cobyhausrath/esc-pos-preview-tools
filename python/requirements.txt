@@ -1,1 +1,2 @@
 python-escpos>=3.0
+pyright

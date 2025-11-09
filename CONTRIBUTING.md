@@ -6,8 +6,9 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Prerequisites
 
-- Node.js 16+ and npm/yarn
-- Git
+- **Node.js 16+** and **Yarn** (this project uses Yarn, not npm)
+- **Python 3.7+** (for Python tools)
+- **Git**
 - Basic understanding of TypeScript
 - Familiarity with ESC/POS commands (helpful but not required)
 
@@ -21,7 +22,11 @@ Thank you for your interest in contributing! This document provides guidelines a
    ```
 3. Install dependencies:
    ```bash
-   npm install
+   # JavaScript/TypeScript
+   yarn install
+
+   # Python
+   pip install python-escpos pytest pyright
    ```
 4. Create a branch:
    ```bash
@@ -32,25 +37,48 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Running Tests
 
+**TypeScript/JavaScript:**
 ```bash
-npm test                 # Run all tests
-npm test -- --watch     # Run tests in watch mode
-npm test -- --coverage  # Generate coverage report
+yarn test              # Run tests in watch mode
+yarn test:run          # Run tests once
+yarn test:coverage     # Generate coverage report
+```
+
+**Python:**
+```bash
+cd python
+python test_escpos_verifier.py
+# or with pytest
+pytest test_escpos_verifier.py -v
 ```
 
 ### Building
 
 ```bash
-npm run build           # Build for production
-npm run dev             # Build in watch mode
+yarn build             # Build for production
+yarn dev               # Build in watch mode
+```
+
+### Type Checking
+
+**TypeScript:**
+```bash
+yarn typecheck         # Check TypeScript types
+```
+
+**Python:**
+```bash
+cd python
+pyright                # Check Python types
 ```
 
 ### Linting and Formatting
 
 ```bash
-npm run lint            # Check for linting errors
-npm run lint:fix        # Fix linting errors
-npm run format          # Format code with Prettier
+yarn lint              # Check for linting errors
+yarn lint:fix          # Fix linting errors automatically
+yarn format            # Format code with Prettier
+yarn format:check      # Check if code is formatted
 ```
 
 ## Code Guidelines
