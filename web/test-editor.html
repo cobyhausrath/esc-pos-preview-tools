@@ -54,6 +54,7 @@ from io import StringIO
 old_stdout = sys.stdout
 sys.stdout = StringIO()
 
+result = None
 try:
     # Create namespace for user code
     namespace = {'Dummy': Dummy}
@@ -67,16 +68,14 @@ try:
         raise Exception("Code must create a printer instance named 'p'")
 
     # Get ESC-POS output
-    output_bytes = list(p.output)
+    result = list(p.output)
 
-    # Get any print output
-    print_output = sys.stdout.getvalue()
-
-    output_bytes
 except Exception as e:
     raise Exception(f"Execution error: {str(e)}")
 finally:
     sys.stdout = old_stdout
+
+result
                 `);
 
                 log('9. Result type: ' + typeof result);
