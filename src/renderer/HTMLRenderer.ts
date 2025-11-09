@@ -177,6 +177,8 @@ export class HTMLRenderer {
     }
 
     .receipt-line {
+      position: relative;
+      z-index: 1;
       white-space: pre-wrap;
       word-wrap: break-word;
       /* Simulate thermal printer dot matrix text */
