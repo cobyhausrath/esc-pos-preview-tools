@@ -196,7 +196,6 @@ export class HTMLRenderer {
       -moz-osx-font-smoothing: grayscale;
       font-smooth: never;
       filter: blur(0.25px);
-      letter-spacing: 0.02em;
     }
 
     .align-left { text-align: left; }
