@@ -257,6 +257,9 @@
                 <button id="export-btn" class="secondary" title="Export to ESC-POS">
                     💾 Export
                 </button>
+                <button id="share-btn" class="secondary" title="Copy shareable link to clipboard">
+                    🔗 Share
+                </button>
             </div>
 
             <div class="divider"></div>
@@ -304,6 +307,71 @@
                 this.isReady = false;
             }
 
+            /**
+             * Encode code to base64 for URL hash
+             * @param {string} code - The code to encode
+             * @returns {string} Base64-encoded code
+             */
+            encodeCodeToHash(code) {
+                try {
+                    // Use btoa for base64 encoding, but first encode URI components
+                    // to handle special characters properly
+                    return btoa(encodeURIComponent(code));
+                } catch (error) {
+                    console.error('Failed to encode code:', error);
+                    return '';
+                }
+            }
+
+            /**
+             * Decode code from base64 URL hash
+             * @param {string} hash - The base64 hash string
+             * @returns {string|null} Decoded code or null if invalid
+             */
+            decodeCodeFromHash(hash) {
+                try {
+                    // Decode base64 and then decode URI components
+                    return decodeURIComponent(atob(hash));
+                } catch (error) {
+                    console.error('Failed to decode hash:', error);
+                    return null;
+                }
+            }
+
+            /**
+             * Get code from URL hash parameter
+             * @returns {string|null} Code from hash or null
+             */
+            getCodeFromHash() {
+                const hash = window.location.hash;
+                if (!hash || hash.length <= 1) {
+                    return null;
+                }
+
+                // Remove '#' and parse parameter
+                const params = new URLSearchParams(hash.substring(1));
+                const codeParam = params.get('code');
+
+                if (!codeParam) {
+                    return null;
+                }
+
+                return this.decodeCodeFromHash(codeParam);
+            }
+
+            /**
+             * Update URL hash with current code
+             * @param {string} code - The code to save in hash
+             */
+            updateHash(code) {
+                const encoded = this.encodeCodeToHash(code);
+                if (encoded) {
+                    // Use replaceState to avoid adding to browser history
+                    const newHash = `#code=${encoded}`;
+                    window.history.replaceState(null, '', newHash);
+                }
+            }
+
             async init() {
                 try {
                     this.updateStatus('loading', 'Loading Pyodide...');
@@ -323,15 +391,24 @@
                     this.updateStatus('success', 'Ready!');
                     this.isReady = true;
 
-                    console.log('init: Pyodide ready, loading default example');
+                    console.log('init: Pyodide ready, checking for hash parameters');
 
                     // Enable buttons
                     document.getElementById('run-btn').disabled = false;
                     document.getElementById('import-btn').disabled = false;
                     document.getElementById('export-btn').disabled = false;
+                    document.getElementById('share-btn').disabled = false;
 
-                    // Load default example
-                    this.loadExample('simple');
+                    // Load code from hash if present, otherwise load default example
+                    const codeFromHash = this.getCodeFromHash();
+                    if (codeFromHash) {
+                        console.log('init: Loading code from hash parameter');
+                        document.getElementById('editor').value = codeFromHash;
+                        this.runCode();
+                    } else {
+                        console.log('init: No hash parameter, loading default example');
+                        this.loadExample('simple');
+                    }
                     console.log('init: Complete');
 
                 } catch (error) {
@@ -447,6 +524,7 @@ result
                         if (cmd === 0x61 && i + 2 < escposBytes.length) {
                             if (currentLine) {
                                 html += this.formatLine(currentLine, currentAlign, currentBold, currentUnderline);
+                                lineCount++;
                                 currentLine = '';
                             }
                             const align = escposBytes[i + 2];
@@ -481,9 +559,11 @@ result
                         if (cmd === 0x56 && i + 2 < escposBytes.length) {
                             if (currentLine) {
                                 html += this.formatLine(currentLine, currentAlign, currentBold, currentUnderline);
+                                lineCount++;
                                 currentLine = '';
                             }
                             html += '<div class="receipt-line center">--- ✂ ---</div>';
+                            lineCount++;
                             i += 3;
                             continue;
                         }
@@ -495,6 +575,7 @@ result
                     // Line feed
                     if (byte === 0x0A) {
                         html += this.formatLine(currentLine, currentAlign, currentBold, currentUnderline);
+                        lineCount++;
                         currentLine = '';
                         i++;
                         continue;
@@ -667,7 +748,9 @@ p.cut(mode='FULL')
                 console.log('onCodeChange: Debouncing...');
                 clearTimeout(this.debounceTimer);
                 this.debounceTimer = setTimeout(() => {
-                    console.log('onCodeChange: Debounce complete, calling runCode');
+                    console.log('onCodeChange: Debounce complete, calling runCode and updating hash');
+                    const code = document.getElementById('editor').value;
+                    this.updateHash(code);
                     this.runCode();
                 }, 500); // 500ms debounce
             }
@@ -716,6 +799,36 @@ list(p.output)
                     this.updateStatus('error', `Export failed: ${error.message}`);
                 }
             }
+
+            /**
+             * Share the current code by copying URL to clipboard
+             */
+            async shareCode() {
+                try {
+                    const code = document.getElementById('editor').value;
+
+                    // Update hash to ensure URL is current
+                    this.updateHash(code);
+
+                    // Copy current URL to clipboard
+                    const url = window.location.href;
+                    await navigator.clipboard.writeText(url);
+
+                    // Show success message
+                    const originalStatus = document.getElementById('status').textContent;
+                    this.updateStatus('success', '✓ Link copied to clipboard!');
+
+                    // Restore original status after 2 seconds
+                    setTimeout(() => {
+                        if (this.isReady) {
+                            this.updateStatus('success', originalStatus);
+                        }
+                    }, 2000);
+
+                } catch (error) {
+                    this.updateStatus('error', `Share failed: ${error.message}`);
+                }
+            }
         }
 
         // ===================================================================
@@ -725,15 +838,19 @@ list(p.output)
         const editor = new ReceiptEditor();
 
         window.addEventListener('load', async () => {
-            // Initialize editor
-            await editor.init();
-
-            // Setup event listeners
+            // Setup event listeners and get button references
             const editorEl = document.getElementById('editor');
             const runBtn = document.getElementById('run-btn');
             const importBtn = document.getElementById('import-btn');
             const exportBtn = document.getElementById('export-btn');
+            const shareBtn = document.getElementById('share-btn');
             const fileInput = document.getElementById('file-input');
+
+            // Disable buttons until ready
+            runBtn.disabled = true;
+            importBtn.disabled = true;
+            exportBtn.disabled = true;
+            shareBtn.disabled = true;
 
             // Run button
             runBtn.addEventListener('click', () => editor.runCode());
@@ -771,15 +888,16 @@ list(p.output)
             // Export button
             exportBtn.addEventListener('click', () => editor.exportFile());
 
+            // Share button
+            shareBtn.addEventListener('click', () => editor.shareCode());
+
             // Example buttons
             document.getElementById('example-simple').addEventListener('click', () => editor.loadExample('simple'));
             document.getElementById('example-formatted').addEventListener('click', () => editor.loadExample('formatted'));
             document.getElementById('example-receipt').addEventListener('click', () => editor.loadExample('receipt'));
 
-            // Disable buttons until ready
-            runBtn.disabled = true;
-            importBtn.disabled = true;
-            exportBtn.disabled = true;
+            // Initialize editor (this will enable buttons when ready)
+            await editor.init();
 
             // Expose for debugging
             window.receiptEditor = editor;
