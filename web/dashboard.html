@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESC-POS Spool Dashboard</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        header {
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e3e;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .connection-status {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .connection-status.connected {
+            background: #1a3a1a;
+            color: #4ec947;
+        }
+
+        .connection-status.disconnected {
+            background: #3a1a1a;
+            color: #e74c3c;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 250px;
+            background: #252526;
+            border-right: 1px solid #3e3e3e;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-section {
+            padding: 16px;
+            border-bottom: 1px solid #3e3e3e;
+        }
+
+        .sidebar-section h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #858585;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .filter-tabs {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-tab {
+            padding: 10px 12px;
+            border-radius: 4px;
+            background: transparent;
+            border: none;
+            color: #cccccc;
+            text-align: left;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .filter-tab:hover {
+            background: #2a2d2e;
+        }
+
+        .filter-tab.active {
+            background: #094771;
+            color: #ffffff;
+        }
+
+        .filter-tab .count {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Job List */
+        .job-list-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .job-list-header {
+            padding: 20px 24px;
+            background: #1e1e1e;
+            border-bottom: 1px solid #3e3e3e;
+        }
+
+        .job-list-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .job-list-header p {
+            font-size: 14px;
+            color: #858585;
+        }
+
+        .job-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .job-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 16px;
+        }
+
+        /* Job Card */
+        .job-card {
+            background: #252526;
+            border: 1px solid #3e3e3e;
+            border-radius: 6px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .job-card:hover {
+            border-color: #094771;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .job-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .job-id {
+            font-size: 14px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+
+        .job-status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .job-status-badge.pending {
+            background: #3a3a1a;
+            color: #f39c12;
+        }
+
+        .job-status-badge.approved {
+            background: #1a3a1a;
+            color: #4ec947;
+        }
+
+        .job-status-badge.rejected {
+            background: #3a1a1a;
+            color: #e74c3c;
+        }
+
+        .job-status-badge.printing {
+            background: #1a2a3a;
+            color: #3498db;
+        }
+
+        .job-status-badge.completed {
+            background: #2a2a2a;
+            color: #95a5a6;
+        }
+
+        .job-status-badge.failed {
+            background: #3a1a1a;
+            color: #e74c3c;
+        }
+
+        .job-meta {
+            font-size: 12px;
+            color: #858585;
+            margin-bottom: 12px;
+        }
+
+        .job-meta div {
+            margin-bottom: 4px;
+        }
+
+        .job-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #3e3e3e;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: #0e639c;
+            color: white;
+        }
+
+        .btn-success {
+            background: #388e3c;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #d32f2f;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #424242;
+            color: #cccccc;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: #252526;
+            border-radius: 8px;
+            max-width: 900px;
+            width: 90%;
+            max-height: 90vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e3e;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: #cccccc;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .modal-close:hover {
+            background: #3e3e3e;
+        }
+
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            background: #2d2d30;
+            border-top: 1px solid #3e3e3e;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }
+
+        /* Preview */
+        .preview-container {
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            background: #1e1e1e;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #858585;
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #858585;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid #3e3e3e;
+            border-top-color: #0e639c;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Stats */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            padding: 16px;
+        }
+
+        .stat-card {
+            background: #2d2d30;
+            padding: 16px;
+            border-radius: 6px;
+            border: 1px solid #3e3e3e;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #858585;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header>
+        <h1>ESC-POS Spool Dashboard</h1>
+        <div class="header-actions">
+            <div class="connection-status disconnected" id="connectionStatus">
+                <span class="status-dot"></span>
+                <span>Connecting...</span>
+            </div>
+            <button class="btn btn-primary btn-small" onclick="refreshJobs()">Refresh</button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <h3>Status Filters</h3>
+                <div class="filter-tabs">
+                    <button class="filter-tab active" data-status="all">
+                        <span>All Jobs</span>
+                        <span class="count" id="count-all">0</span>
+                    </button>
+                    <button class="filter-tab" data-status="pending">
+                        <span>Pending</span>
+                        <span class="count" id="count-pending">0</span>
+                    </button>
+                    <button class="filter-tab" data-status="approved">
+                        <span>Approved</span>
+                        <span class="count" id="count-approved">0</span>
+                    </button>
+                    <button class="filter-tab" data-status="rejected">
+                        <span>Rejected</span>
+                        <span class="count" id="count-rejected">0</span>
+                    </button>
+                    <button class="filter-tab" data-status="printing">
+                        <span>Printing</span>
+                        <span class="count" id="count-printing">0</span>
+                    </button>
+                    <button class="filter-tab" data-status="completed">
+                        <span>Completed</span>
+                        <span class="count" id="count-completed">0</span>
+                    </button>
+                    <button class="filter-tab" data-status="failed">
+                        <span>Failed</span>
+                        <span class="count" id="count-failed">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Statistics</h3>
+                <div id="statsContainer"></div>
+            </div>
+        </aside>
+
+        <!-- Job List -->
+        <div class="job-list-container">
+            <div class="job-list-header">
+                <h2 id="listTitle">All Jobs</h2>
+                <p id="listDescription">Showing all print jobs</p>
+            </div>
+            <div class="job-list" id="jobList">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Job Detail Modal -->
+    <div class="modal" id="jobModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Job Details</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Populated dynamically -->
+            </div>
+            <div class="modal-footer" id="modalFooter">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Configuration
+        const API_BASE = 'http://127.0.0.1:3000/api';
+        const WS_URL = 'ws://127.0.0.1:8765';
+
+        // State
+        let jobs = [];
+        let currentFilter = 'all';
+        let ws = null;
+        let selectedJob = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Dashboard loaded');
+            setupEventListeners();
+            connectWebSocket();
+            loadJobs();
+            loadStats();
+        });
+
+        // Event Listeners
+        function setupEventListeners() {
+            // Filter tabs
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const status = tab.dataset.status;
+                    setFilter(status);
+                });
+            });
+
+            // Modal click outside to close
+            document.getElementById('jobModal').addEventListener('click', (e) => {
+                if (e.target.id === 'jobModal') {
+                    closeModal();
+                }
+            });
+        }
+
+        // WebSocket
+        function connectWebSocket() {
+            try {
+                ws = new WebSocket(WS_URL);
+
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    updateConnectionStatus(true);
+                };
+
+                ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    updateConnectionStatus(false);
+                    // Reconnect after 3 seconds
+                    setTimeout(connectWebSocket, 3000);
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    updateConnectionStatus(false);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('WebSocket message:', data);
+
+                        if (data.event && data.event.startsWith('job:')) {
+                            handleJobEvent(data);
+                        }
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+            } catch (error) {
+                console.error('Error connecting to WebSocket:', error);
+                updateConnectionStatus(false);
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connectionStatus');
+            if (connected) {
+                status.className = 'connection-status connected';
+                status.querySelector('span:last-child').textContent = 'Connected';
+            } else {
+                status.className = 'connection-status disconnected';
+                status.querySelector('span:last-child').textContent = 'Disconnected';
+            }
+        }
+
+        function handleJobEvent(data) {
+            console.log('Job event:', data.event, data.data);
+
+            // Reload jobs and stats
+            loadJobs();
+            loadStats();
+
+            // Show notification
+            showNotification(data.event, data.data);
+        }
+
+        function showNotification(event, data) {
+            const eventNames = {
+                'job:created': 'New Job',
+                'job:approved': 'Job Approved',
+                'job:rejected': 'Job Rejected',
+                'job:printing': 'Printing',
+                'job:completed': 'Print Complete',
+                'job:failed': 'Print Failed',
+            };
+
+            const title = eventNames[event] || event;
+            const message = `Job #${data.id}`;
+
+            // You could implement a toast notification here
+            console.log(`📢 ${title}: ${message}`);
+        }
+
+        // API Calls
+        async function loadJobs() {
+            try {
+                const url = currentFilter === 'all'
+                    ? `${API_BASE}/jobs`
+                    : `${API_BASE}/jobs?status=${currentFilter}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                jobs = data.jobs || [];
+                renderJobs();
+                updateCounts();
+            } catch (error) {
+                console.error('Error loading jobs:', error);
+                renderError('Failed to load jobs');
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const stats = await response.json();
+                renderStats(stats);
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function approveJob(jobId) {
+            try {
+                const response = await fetch(`${API_BASE}/jobs/${jobId}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user: 'dashboard-user', autoPrint: false }),
+                });
+
+                if (!response.ok) throw new Error('Failed to approve job');
+
+                await loadJobs();
+                closeModal();
+            } catch (error) {
+                console.error('Error approving job:', error);
+                alert('Failed to approve job: ' + error.message);
+            }
+        }
+
+        async function rejectJob(jobId) {
+            const reason = prompt('Enter rejection reason:');
+            if (!reason) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/jobs/${jobId}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason, user: 'dashboard-user' }),
+                });
+
+                if (!response.ok) throw new Error('Failed to reject job');
+
+                await loadJobs();
+                closeModal();
+            } catch (error) {
+                console.error('Error rejecting job:', error);
+                alert('Failed to reject job: ' + error.message);
+            }
+        }
+
+        async function printJob(jobId) {
+            try {
+                const response = await fetch(`${API_BASE}/jobs/${jobId}/print`, {
+                    method: 'POST',
+                });
+
+                if (!response.ok) throw new Error('Failed to print job');
+
+                await loadJobs();
+            } catch (error) {
+                console.error('Error printing job:', error);
+                alert('Failed to print job: ' + error.message);
+            }
+        }
+
+        async function deleteJob(jobId) {
+            if (!confirm('Are you sure you want to delete this job?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/jobs/${jobId}`, {
+                    method: 'DELETE',
+                });
+
+                if (!response.ok) throw new Error('Failed to delete job');
+
+                await loadJobs();
+                closeModal();
+            } catch (error) {
+                console.error('Error deleting job:', error);
+                alert('Failed to delete job: ' + error.message);
+            }
+        }
+
+        // Rendering
+        function renderJobs() {
+            const container = document.getElementById('jobList');
+
+            if (jobs.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <h3>No jobs found</h3>
+                        <p>There are no ${currentFilter === 'all' ? '' : currentFilter + ' '}jobs at the moment.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const grid = document.createElement('div');
+            grid.className = 'job-grid';
+
+            jobs.forEach(job => {
+                grid.appendChild(createJobCard(job));
+            });
+
+            container.innerHTML = '';
+            container.appendChild(grid);
+        }
+
+        function createJobCard(job) {
+            const card = document.createElement('div');
+            card.className = 'job-card';
+            card.onclick = () => showJobDetail(job);
+
+            const createdAt = new Date(job.created_at).toLocaleString();
+            const updatedAt = new Date(job.updated_at).toLocaleString();
+
+            card.innerHTML = `
+                <div class="job-card-header">
+                    <div class="job-id">Job #${job.id}</div>
+                    <div class="job-status-badge ${job.status}">${job.status}</div>
+                </div>
+                <div class="job-meta">
+                    <div><strong>Created:</strong> ${createdAt}</div>
+                    <div><strong>Updated:</strong> ${updatedAt}</div>
+                    ${job.user ? `<div><strong>User:</strong> ${job.user}</div>` : ''}
+                    ${job.notes ? `<div><strong>Notes:</strong> ${job.notes}</div>` : ''}
+                </div>
+                ${renderJobActions(job)}
+            `;
+
+            return card;
+        }
+
+        function renderJobActions(job) {
+            const actions = [];
+
+            if (job.status === 'pending') {
+                actions.push(`<button class="btn btn-success btn-small" onclick="event.stopPropagation(); approveJob(${job.id})">Approve</button>`);
+                actions.push(`<button class="btn btn-danger btn-small" onclick="event.stopPropagation(); rejectJob(${job.id})">Reject</button>`);
+            }
+
+            if (job.status === 'approved') {
+                actions.push(`<button class="btn btn-primary btn-small" onclick="event.stopPropagation(); printJob(${job.id})">Print</button>`);
+            }
+
+            if (job.status === 'pending' || job.status === 'rejected') {
+                actions.push(`<button class="btn btn-secondary btn-small" onclick="event.stopPropagation(); deleteJob(${job.id})">Delete</button>`);
+            }
+
+            if (actions.length === 0) {
+                return '';
+            }
+
+            return `<div class="job-actions">${actions.join('')}</div>`;
+        }
+
+        function renderStats(stats) {
+            const container = document.getElementById('statsContainer');
+
+            if (!stats) {
+                container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+                return;
+            }
+
+            const html = `
+                <div class="stat-card">
+                    <div class="stat-label">Total Jobs</div>
+                    <div class="stat-value">${stats.jobs || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Printers</div>
+                    <div class="stat-value">${stats.printers || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Database Size</div>
+                    <div class="stat-value">${stats.fileSizeMB || '0.00'} MB</div>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function renderError(message) {
+            const container = document.getElementById('jobList');
+            container.innerHTML = `
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                        <line x1="12" y1="8" x2="12" y2="12" stroke-width="2" stroke-linecap="round"/>
+                        <circle cx="12" cy="16" r="1" fill="currentColor"/>
+                    </svg>
+                    <h3>Error</h3>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+
+        function updateCounts() {
+            // Count by status
+            const counts = {
+                all: jobs.length,
+                pending: 0,
+                approved: 0,
+                rejected: 0,
+                printing: 0,
+                completed: 0,
+                failed: 0,
+            };
+
+            jobs.forEach(job => {
+                if (counts.hasOwnProperty(job.status)) {
+                    counts[job.status]++;
+                }
+            });
+
+            // Update count badges
+            Object.keys(counts).forEach(status => {
+                const badge = document.getElementById(`count-${status}`);
+                if (badge) {
+                    badge.textContent = counts[status];
+                }
+            });
+        }
+
+        // Filter
+        function setFilter(status) {
+            currentFilter = status;
+
+            // Update active tab
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.status === status);
+            });
+
+            // Update title
+            const titles = {
+                all: 'All Jobs',
+                pending: 'Pending Jobs',
+                approved: 'Approved Jobs',
+                rejected: 'Rejected Jobs',
+                printing: 'Printing Jobs',
+                completed: 'Completed Jobs',
+                failed: 'Failed Jobs',
+            };
+
+            document.getElementById('listTitle').textContent = titles[status] || 'Jobs';
+            document.getElementById('listDescription').textContent =
+                status === 'all' ? 'Showing all print jobs' : `Showing ${status} print jobs`;
+
+            // Reload jobs
+            loadJobs();
+        }
+
+        // Modal
+        function showJobDetail(job) {
+            selectedJob = job;
+
+            document.getElementById('modalTitle').textContent = `Job #${job.id}`;
+            document.getElementById('modalBody').innerHTML = `
+                <div class="job-meta">
+                    <div><strong>Status:</strong> <span class="job-status-badge ${job.status}">${job.status}</span></div>
+                    <div><strong>Created:</strong> ${new Date(job.created_at).toLocaleString()}</div>
+                    <div><strong>Updated:</strong> ${new Date(job.updated_at).toLocaleString()}</div>
+                    ${job.user ? `<div><strong>User:</strong> ${job.user}</div>` : ''}
+                    ${job.printer_id ? `<div><strong>Printer ID:</strong> ${job.printer_id}</div>` : ''}
+                    ${job.notes ? `<div><strong>Notes:</strong> ${job.notes}</div>` : ''}
+                    ${job.trace_id ? `<div><strong>Trace ID:</strong> ${job.trace_id}</div>` : ''}
+                    ${job.chain_depth ? `<div><strong>Chain Depth:</strong> ${job.chain_depth}</div>` : ''}
+                </div>
+                <div class="preview-container">
+                    <p style="color: #858585;">Preview not yet implemented</p>
+                </div>
+            `;
+
+            const footer = document.getElementById('modalFooter');
+            const actions = [];
+
+            if (job.status === 'pending') {
+                actions.push(`<button class="btn btn-success" onclick="approveJob(${job.id})">Approve</button>`);
+                actions.push(`<button class="btn btn-danger" onclick="rejectJob(${job.id})">Reject</button>`);
+            }
+
+            if (job.status === 'approved') {
+                actions.push(`<button class="btn btn-primary" onclick="printJob(${job.id})">Print Now</button>`);
+            }
+
+            actions.push(`<button class="btn btn-secondary" onclick="closeModal()">Close</button>`);
+
+            footer.innerHTML = actions.join('');
+
+            document.getElementById('jobModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('jobModal').classList.remove('active');
+            selectedJob = null;
+        }
+
+        // Global functions
+        window.refreshJobs = loadJobs;
+        window.setFilter = setFilter;
+        window.approveJob = approveJob;
+        window.rejectJob = rejectJob;
+        window.printJob = printJob;
+        window.deleteJob = deleteJob;
+        window.showJobDetail = showJobDetail;
+        window.closeModal = closeModal;
+    </script>
+</body>
+</html>
