@@ -3,6 +3,7 @@ import { usePyodide } from '@/hooks/usePyodide';
 import { usePrinterClient } from '@/hooks/usePrinterClient';
 import { HexFormatter } from '@/utils/hexFormatter';
 import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
+import { CommandParser, HTMLRenderer } from '../../../src/index';
 import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
@@ -77,9 +78,11 @@ export default function Editor() {
       const bytes = await runCode(code);
       const { hex, stats } = HexFormatter.formatWithStats(bytes);
 
-      // TODO: Parse ESC-POS bytes to generate preview HTML
-      // For now, just show the raw text
-      const preview = new TextDecoder().decode(bytes);
+      // Parse ESC-POS bytes to generate preview HTML
+      const parser = new CommandParser();
+      const renderer = new HTMLRenderer();
+      const parseResult = parser.parse(bytes);
+      const preview = renderer.render(parseResult.commands);
 
       setReceiptData({
         code,
@@ -149,7 +152,12 @@ export default function Editor() {
 
         // Fallback: Show preview of raw bytes
         const { hex, stats } = HexFormatter.formatWithStats(bytes);
-        const preview = new TextDecoder().decode(bytes);
+
+        // Parse and render the ESC-POS bytes for preview
+        const parser = new CommandParser();
+        const renderer = new HTMLRenderer();
+        const parseResult = parser.parse(bytes);
+        const preview = renderer.render(parseResult.commands);
 
         setReceiptData({
           code: code, // Keep existing code
