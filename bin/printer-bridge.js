@@ -96,16 +96,38 @@ PROTOCOL:
       "data": [0x1B, 0x40, ...]    // Array of bytes
     }
 
+  Query printer status:
+    {
+      "action": "status",
+      "printer": "netum",           // Or specify host/port
+      "host": "192.168.1.100",     // Optional if printer name given
+      "port": 9100                  // Optional if printer name given
+    }
+
   List printers:
     {
       "action": "list"
     }
 
-  Response:
+  Response (send):
     {
       "success": true,
       "message": "Sent 123 bytes",
       "bytesSent": 123
+    }
+
+  Response (status):
+    {
+      "success": true,
+      "status": {
+        "online": true,
+        "paperStatus": "ok" | "low" | "out" | "unknown",
+        "coverOpen": false,
+        "error": false,
+        "errorMessage": null,
+        "supported": true,
+        "details": { ... }
+      }
     }
 
   Error:
@@ -175,6 +197,168 @@ function sendToSocket(host, port, data) {
             } else if (!connected) {
                 reject({ code: 'CONNECTION_CLOSED', message: 'Connection closed before sending data' });
             }
+        });
+
+        client.connect(port, host);
+    });
+}
+
+// ===================================================================
+// Printer Status Query
+// ===================================================================
+
+/**
+ * Parse printer status byte (DLE EOT responses)
+ * @param {number} statusByte - Status byte from printer
+ * @param {number} queryType - Query type (1-4)
+ * @returns {Object} Parsed status information
+ */
+function parseStatusByte(statusByte, queryType) {
+    const status = {};
+
+    switch (queryType) {
+        case 1: // Printer status (DLE EOT 1)
+            status.drawerOpen = !!(statusByte & 0x04);
+            status.online = !(statusByte & 0x08);
+            status.coverOpen = !!(statusByte & 0x20);
+            status.paperFeedButton = !!(statusByte & 0x40);
+            status.error = !!(statusByte & 0x40);
+            break;
+
+        case 2: // Offline status (DLE EOT 2)
+            status.coverOpen = !!(statusByte & 0x04);
+            status.paperFeedButton = !!(statusByte & 0x08);
+            status.paperEnd = !!(statusByte & 0x20);
+            status.error = !!(statusByte & 0x40);
+            break;
+
+        case 3: // Error status (DLE EOT 3)
+            status.cutterError = !!(statusByte & 0x08);
+            status.unrecoverableError = !!(statusByte & 0x20);
+            status.autoRecoverableError = !!(statusByte & 0x40);
+            break;
+
+        case 4: // Paper sensor status (DLE EOT 4)
+            status.paperNearEnd = !!(statusByte & 0x0C);
+            status.paperEnd = !!(statusByte & 0x60);
+            break;
+    }
+
+    return status;
+}
+
+/**
+ * Query printer status using ESC-POS commands
+ * @param {string} host - Printer host
+ * @param {number} port - Printer port
+ * @returns {Promise<Object>} Status information
+ */
+function queryPrinterStatus(host, port) {
+    return new Promise((resolve, reject) => {
+        const client = new net.Socket();
+        let statusResponses = [];
+        let queryIndex = 0;
+        const queries = [
+            Buffer.from([0x10, 0x04, 0x01]), // DLE EOT 1 - Printer status
+            Buffer.from([0x10, 0x04, 0x02]), // DLE EOT 2 - Offline status
+            Buffer.from([0x10, 0x04, 0x04]), // DLE EOT 4 - Paper sensor
+        ];
+
+        client.setTimeout(2000); // 2 second timeout for status queries
+
+        client.on('timeout', () => {
+            client.destroy();
+            reject({ code: 'TIMEOUT', message: 'Status query timeout' });
+        });
+
+        client.on('error', (err) => {
+            reject({ code: 'CONNECTION_ERROR', message: err.message });
+        });
+
+        client.on('connect', () => {
+            // Send first query
+            client.write(queries[queryIndex]);
+        });
+
+        client.on('data', (data) => {
+            if (data.length > 0) {
+                // Store the response byte
+                statusResponses.push({
+                    type: queryIndex + 1,
+                    byte: data[0]
+                });
+
+                // Send next query or finish
+                queryIndex++;
+                if (queryIndex < queries.length) {
+                    // Small delay between queries
+                    setTimeout(() => {
+                        client.write(queries[queryIndex]);
+                    }, 50);
+                } else {
+                    // All queries complete
+                    client.end();
+                }
+            }
+        });
+
+        client.on('close', () => {
+            if (statusResponses.length === 0) {
+                reject({
+                    code: 'NO_RESPONSE',
+                    message: 'Printer did not respond to status queries (may not support status commands)'
+                });
+                return;
+            }
+
+            // Parse all responses
+            let combinedStatus = {
+                online: true,
+                paperStatus: 'ok',
+                coverOpen: false,
+                error: false,
+                errorMessage: null,
+                supported: true,
+                details: {}
+            };
+
+            statusResponses.forEach(response => {
+                const parsed = parseStatusByte(response.byte, response.type);
+                Object.assign(combinedStatus.details, parsed);
+
+                // Update high-level status
+                if (response.type === 1 || response.type === 2) {
+                    if (parsed.online === false) {
+                        combinedStatus.online = false;
+                        combinedStatus.error = true;
+                        combinedStatus.errorMessage = 'Printer offline';
+                    }
+                    if (parsed.coverOpen) {
+                        combinedStatus.coverOpen = true;
+                        combinedStatus.error = true;
+                        combinedStatus.errorMessage = 'Cover open';
+                    }
+                    if (parsed.paperEnd) {
+                        combinedStatus.paperStatus = 'out';
+                        combinedStatus.error = true;
+                        combinedStatus.errorMessage = 'Paper out';
+                    }
+                }
+
+                if (response.type === 4) {
+                    if (parsed.paperEnd) {
+                        combinedStatus.paperStatus = 'out';
+                        combinedStatus.error = true;
+                        if (!combinedStatus.errorMessage) {
+                            combinedStatus.errorMessage = 'Paper out';
+                        }
+                    } else if (parsed.paperNearEnd) {
+                        combinedStatus.paperStatus = 'low';
+                    }
+                }
+            });
+
+            resolve(combinedStatus);
         });
 
         client.connect(port, host);
@@ -261,6 +445,61 @@ async function handleMessage(ws, message) {
                 error: error.message,
                 code: error.code || 'UNKNOWN_ERROR'
             }));
+        }
+
+        return;
+    }
+
+    if (action === 'status') {
+        // Query printer status
+        let { printer, host, port } = request;
+
+        // Resolve printer name to host/port
+        if (printer && PRINTERS[printer]) {
+            host = PRINTERS[printer].host;
+            port = PRINTERS[printer].port;
+        }
+
+        // Validate
+        if (!host || !port) {
+            ws.send(JSON.stringify({
+                success: false,
+                error: 'Missing host or port',
+                code: 'INVALID_REQUEST'
+            }));
+            return;
+        }
+
+        // Query status
+        try {
+            const status = await queryPrinterStatus(host, port);
+            ws.send(JSON.stringify({
+                success: true,
+                status: status
+            }));
+        } catch (error) {
+            // If printer doesn't support status queries, return a basic status
+            if (error.code === 'NO_RESPONSE') {
+                ws.send(JSON.stringify({
+                    success: true,
+                    status: {
+                        online: true,
+                        paperStatus: 'unknown',
+                        coverOpen: false,
+                        error: false,
+                        errorMessage: null,
+                        supported: false,
+                        details: {}
+                    },
+                    warning: error.message
+                }));
+            } else {
+                ws.send(JSON.stringify({
+                    success: false,
+                    error: error.message,
+                    code: error.code || 'UNKNOWN_ERROR'
+                }));
+            }
         }
 
         return;
