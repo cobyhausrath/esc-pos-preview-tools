@@ -152,7 +152,10 @@ export class HTMLRenderer {
   }
 
   private getHeader(): string {
-    const pixelWidth = Math.round((this.printer.printableWidthMm / 25.4) * 96); // Convert mm to CSS pixels at 96 DPI
+    // Calculate width based on character count for better readability
+    // Courier New at 14px is approximately 8.5px per character
+    const charWidth = 8.5;
+    const pixelWidth = Math.round(this.printer.fonts.fontA.charactersPerLine * charWidth);
 
     return `<!DOCTYPE html>
 <html lang="en">
