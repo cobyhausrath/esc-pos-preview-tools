@@ -50,7 +50,9 @@
     "start": "node dist/index.js",
     "start:dev": "tsup --watch & node --watch dist/index.js",
     "bridge": "node bin/printer-bridge.js",
-    "bridge:dev": "node --watch bin/printer-bridge.js"
+    "bridge:dev": "node --watch bin/printer-bridge.js",
+    "server": "node server/api-server.js",
+    "server:dev": "node --watch server/api-server.js"
   },
   "keywords": [
     "esc-pos",
@@ -96,6 +98,7 @@
     "vitest": "^1.0.0"
   },
   "dependencies": {
+    "better-sqlite3": "^12.4.1",
     "express": "^4.18.2",
     "iconv-lite": "^0.6.3",
     "ws": "^8.16.0"
