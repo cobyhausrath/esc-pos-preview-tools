@@ -9,15 +9,29 @@ export default function ReceiptPreview({ preview, isLoading }: ReceiptPreviewPro
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
+    console.log('[ReceiptPreview] useEffect triggered');
+    console.log('[ReceiptPreview] preview type:', typeof preview);
+    console.log('[ReceiptPreview] preview length:', preview?.length);
+    console.log('[ReceiptPreview] preview substring:', preview?.substring?.(0, 100));
+    console.log('[ReceiptPreview] iframeRef.current:', iframeRef.current);
+
     if (iframeRef.current && preview) {
       const iframe = iframeRef.current;
       const doc = iframe.contentDocument || iframe.contentWindow?.document;
 
+      console.log('[ReceiptPreview] doc:', doc);
+
       if (doc) {
+        console.log('[ReceiptPreview] Writing to iframe...');
         doc.open();
         doc.write(preview);
         doc.close();
+        console.log('[ReceiptPreview] Write complete');
+      } else {
+        console.error('[ReceiptPreview] No document available!');
       }
+    } else {
+      console.log('[ReceiptPreview] Skipping write - iframe or preview not ready');
     }
   }, [preview]);
 
