@@ -268,51 +268,91 @@ function queryPrinterStatus(host, port) {
         const client = new net.Socket();
         let statusResponses = [];
         let queryIndex = 0;
+
+        // Constants for query timing
+        const STATUS_TIMEOUT_MS = 2000;
+        const QUERY_DELAY_MS = 50;
+
         const queries = [
             Buffer.from([0x10, 0x04, 0x01]), // DLE EOT 1 - Printer status
             Buffer.from([0x10, 0x04, 0x02]), // DLE EOT 2 - Offline status
+            Buffer.from([0x10, 0x04, 0x03]), // DLE EOT 3 - Error status
             Buffer.from([0x10, 0x04, 0x04]), // DLE EOT 4 - Paper sensor
         ];
 
-        client.setTimeout(2000); // 2 second timeout for status queries
+        console.log(`[Status Query] Starting query to ${host}:${port}`);
+        client.setTimeout(STATUS_TIMEOUT_MS);
 
         client.on('timeout', () => {
+            console.log('[Status Query] Timeout');
             client.destroy();
             reject({ code: 'TIMEOUT', message: 'Status query timeout' });
         });
 
         client.on('error', (err) => {
+            console.log(`[Status Query] Error: ${err.message}`);
             reject({ code: 'CONNECTION_ERROR', message: err.message });
         });
 
         client.on('connect', () => {
-            // Send first query
+            console.log('[Status Query] Connected, sending first query');
             client.write(queries[queryIndex]);
         });
 
         client.on('data', (data) => {
-            if (data.length > 0) {
-                // Store the response byte
+            // DLE EOT responses should be exactly 1 byte
+            // TCP is a stream protocol, so handle various data chunk sizes
+            if (data.length === 1) {
+                const statusByte = data[0];
+                console.log(`[Status Query] Response ${queryIndex + 1}: 0x${statusByte.toString(16).padStart(2, '0')}`);
+
                 statusResponses.push({
                     type: queryIndex + 1,
-                    byte: data[0]
+                    byte: statusByte
                 });
+
+                // Reset timeout for next query
+                client.setTimeout(STATUS_TIMEOUT_MS);
 
                 // Send next query or finish
                 queryIndex++;
                 if (queryIndex < queries.length) {
-                    // Small delay between queries
                     setTimeout(() => {
                         client.write(queries[queryIndex]);
-                    }, 50);
+                    }, QUERY_DELAY_MS);
                 } else {
-                    // All queries complete
                     client.end();
                 }
+            } else if (data.length > 1) {
+                // Handle case where multiple responses arrive in one chunk
+                console.log(`[Status Query] Warning: Received ${data.length} bytes, expected 1. Using first byte.`);
+                const statusByte = data[0];
+
+                statusResponses.push({
+                    type: queryIndex + 1,
+                    byte: statusByte
+                });
+
+                // Reset timeout
+                client.setTimeout(STATUS_TIMEOUT_MS);
+
+                queryIndex++;
+                if (queryIndex < queries.length) {
+                    setTimeout(() => {
+                        client.write(queries[queryIndex]);
+                    }, QUERY_DELAY_MS);
+                } else {
+                    client.end();
+                }
+            } else {
+                // Received empty data, ignore
+                console.log('[Status Query] Warning: Received empty data chunk');
             }
         });
 
         client.on('close', () => {
+            console.log(`[Status Query] Connection closed. Responses: ${statusResponses.length}/${queries.length}`);
+
             if (statusResponses.length === 0) {
                 reject({
                     code: 'NO_RESPONSE',
@@ -342,7 +382,7 @@ function queryPrinterStatus(host, port) {
                     if (parsed.online === false) {
                         combinedStatus.online = false;
                         combinedStatus.error = true;
-                        combinedStatus.errorMessage = 'Printer offline';
+                        combinedStatus.errorMessage = 'Printer is offline';
                     }
                 }
 
@@ -351,7 +391,7 @@ function queryPrinterStatus(host, port) {
                     if (parsed.coverOpen) {
                         combinedStatus.coverOpen = true;
                         combinedStatus.error = true;
-                        combinedStatus.errorMessage = 'Cover open';
+                        combinedStatus.errorMessage = 'Printer cover is open';
                     }
                     if (parsed.paperShortage) {
                         combinedStatus.paperStatus = 'low';
@@ -359,7 +399,29 @@ function queryPrinterStatus(host, port) {
                     }
                     if (parsed.error && !combinedStatus.errorMessage) {
                         combinedStatus.error = true;
-                        combinedStatus.errorMessage = 'Printer error';
+                        combinedStatus.errorMessage = 'Printer has an error';
+                    }
+                }
+
+                if (response.type === 3) {
+                    // Error status
+                    if (parsed.cutterError) {
+                        combinedStatus.error = true;
+                        if (!combinedStatus.errorMessage) {
+                            combinedStatus.errorMessage = 'Auto-cutter error';
+                        }
+                    }
+                    if (parsed.unrecoverableError) {
+                        combinedStatus.error = true;
+                        if (!combinedStatus.errorMessage) {
+                            combinedStatus.errorMessage = 'Unrecoverable printer error';
+                        }
+                    }
+                    if (parsed.temperatureError) {
+                        combinedStatus.error = true;
+                        if (!combinedStatus.errorMessage) {
+                            combinedStatus.errorMessage = 'Print head temperature/voltage error';
+                        }
                     }
                 }
 
@@ -628,4 +690,9 @@ if (require.main === module) {
     main();
 }
 
-module.exports = { sendToSocket, handleMessage };
+module.exports = {
+    sendToSocket,
+    handleMessage,
+    parseStatusByte,
+    queryPrinterStatus
+};
