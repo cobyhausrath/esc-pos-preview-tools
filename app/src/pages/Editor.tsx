@@ -3,7 +3,7 @@ import { usePyodide } from '@/hooks/usePyodide';
 import { usePrinterClient } from '@/hooks/usePrinterClient';
 import { HexFormatter } from '@/utils/hexFormatter';
 import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
-import { CommandParser, HTMLRenderer } from '../../../src/index';
+import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
 import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
