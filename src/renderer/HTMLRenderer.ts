@@ -206,7 +206,8 @@ export class HTMLRenderer {
 
     .receipt-line {
       white-space: pre-wrap;
-      word-wrap: break-word;
+      word-break: normal;
+      overflow-wrap: normal;
       color: #000;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
