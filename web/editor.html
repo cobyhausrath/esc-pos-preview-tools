@@ -1087,10 +1087,10 @@ p.text('--------------------------------\\n')
                 // Parse text into todo items if provided
                 let items = [];
                 if (text) {
-                    const lines = text.split('\\n').filter(line => line.trim());
+                    const lines = text.split('\n').filter(line => line.trim());
                     items = lines.map(line => {
                         // Check if it's a Google Keep style checkbox
-                        const keepMatch = line.match(/^\\[([x ])\\]\\s*(.+)$/);
+                        const keepMatch = line.match(/^\[([x ])\]\s*(.+)$/);
                         if (keepMatch) {
                             return {
                                 checked: keepMatch[1] === 'x',
@@ -1100,7 +1100,7 @@ p.text('--------------------------------\\n')
                         // Otherwise treat as unchecked item
                         return {
                             checked: false,
-                            text: line.replace(/^[-*•]\\s*/, '')
+                            text: line.replace(/^[-*•]\s*/, '')
                         };
                     });
                 }
