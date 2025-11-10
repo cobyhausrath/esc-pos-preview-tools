@@ -1,25 +1,306 @@
-import { useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import {
+  LineState,
+  CommandMetadata,
+  AlignmentType,
+  ContextMenuPosition,
+} from '../types';
+import { ContextMenu } from './ContextMenu';
 
 interface ReceiptPreviewProps {
-  preview: string;
+  escposBytes: Uint8Array | null;
   isLoading: boolean;
+  onContextMenuAction: (lineNumber: number, code: string) => void;
 }
 
-export default function ReceiptPreview({ preview, isLoading }: ReceiptPreviewProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+/**
+ * ReceiptPreview - Display formatted ESC-POS receipt with context menu support
+ *
+ * This component:
+ * - Parses ESC-POS bytes to HTML
+ * - Tracks command metadata for each line
+ * - Attaches data attributes for context menu
+ * - Handles right-click to show context menu
+ */
+export default function ReceiptPreview({
+  escposBytes,
+  isLoading,
+  onContextMenuAction,
+}: ReceiptPreviewProps) {
+  const [contextMenu, setContextMenu] = useState<{
+    lineNumber: number;
+    attributes: { align: AlignmentType; bold: boolean; underline: boolean };
+    commands: CommandMetadata[];
+    position: ContextMenuPosition;
+  } | null>(null);
 
-  useEffect(() => {
-    if (iframeRef.current && preview) {
-      const iframe = iframeRef.current;
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  const [commandMap] = useState<Map<number, LineState>>(new Map());
+  const [previewLines, setPreviewLines] = useState<
+    Array<{
+      text: string;
+      align: AlignmentType;
+      bold: boolean;
+      underline: boolean;
+      lineNumber: number;
+    }>
+  >([]);
 
-      if (doc) {
-        doc.open();
-        doc.write(preview);
-        doc.close();
+  // Parse ESC-POS bytes and track commands
+  const parseEscPos = useCallback(
+    (bytes: Uint8Array) => {
+      const lines: Array<{
+        text: string;
+        align: AlignmentType;
+        bold: boolean;
+        underline: boolean;
+        lineNumber: number;
+      }> = [];
+      const newCommandMap = new Map<number, LineState>();
+      let lineCommands: CommandMetadata[] = [];
+
+      let currentAlign: AlignmentType = 'left';
+      let currentBold = false;
+      let currentUnderline = false;
+      let currentLine = '';
+      let lineCount = 0;
+      let i = 0;
+
+      while (i < bytes.length) {
+        const byte = bytes[i];
+
+        // ESC sequences
+        if (byte === 0x1b && i + 1 < bytes.length) {
+          const cmd = bytes[i + 1];
+
+          // ESC @ - Initialize
+          if (cmd === 0x40) {
+            lineCommands.push({
+              type: 'initialize',
+              pythonCode: "p.set(align='left', bold=False, underline=0)",
+            });
+            i += 2;
+            continue;
+          }
+
+          // ESC a - Alignment
+          if (cmd === 0x61 && i + 2 < bytes.length) {
+            if (currentLine) {
+              lines.push({
+                text: currentLine,
+                align: currentAlign,
+                bold: currentBold,
+                underline: currentUnderline,
+                lineNumber: lineCount,
+              });
+              newCommandMap.set(lineCount, {
+                align: currentAlign,
+                bold: currentBold,
+                underline: currentUnderline,
+                commands: [...lineCommands],
+              });
+              lineCount++;
+              lineCommands = [];
+              currentLine = '';
+            }
+            const align = bytes[i + 2];
+            currentAlign =
+              align === 1 ? 'center' : align === 2 ? 'right' : 'left';
+            lineCommands.push({
+              type: 'alignment',
+              value: currentAlign,
+              pythonCode: `p.set(align='${currentAlign}')`,
+            });
+            i += 3;
+            continue;
+          }
+
+          // ESC E - Bold
+          if (cmd === 0x45 && i + 2 < bytes.length) {
+            currentBold = bytes[i + 2] !== 0;
+            lineCommands.push({
+              type: 'bold',
+              value: currentBold,
+              pythonCode: `p.set(bold=${currentBold ? 'True' : 'False'})`,
+            });
+            i += 3;
+            continue;
+          }
+
+          // ESC - - Underline
+          if (cmd === 0x2d && i + 2 < bytes.length) {
+            currentUnderline = bytes[i + 2] !== 0;
+            lineCommands.push({
+              type: 'underline',
+              value: currentUnderline,
+              pythonCode: `p.set(underline=${currentUnderline ? '1' : '0'})`,
+            });
+            i += 3;
+            continue;
+          }
+
+          i += 2;
+          continue;
+        }
+
+        // GS sequences
+        if (byte === 0x1d && i + 1 < bytes.length) {
+          const cmd = bytes[i + 1];
+
+          // GS V - Cut
+          if (cmd === 0x56 && i + 2 < bytes.length) {
+            if (currentLine) {
+              lines.push({
+                text: currentLine,
+                align: currentAlign,
+                bold: currentBold,
+                underline: currentUnderline,
+                lineNumber: lineCount,
+              });
+              newCommandMap.set(lineCount, {
+                align: currentAlign,
+                bold: currentBold,
+                underline: currentUnderline,
+                commands: [...lineCommands],
+              });
+              lineCount++;
+              lineCommands = [];
+              currentLine = '';
+            }
+            lines.push({
+              text: '--- ✂ ---',
+              align: 'center',
+              bold: false,
+              underline: false,
+              lineNumber: lineCount,
+            });
+            lineCount++;
+            i += 3;
+            continue;
+          }
+
+          i += 2;
+          continue;
+        }
+
+        // Line feed
+        if (byte === 0x0a) {
+          lines.push({
+            text: currentLine,
+            align: currentAlign,
+            bold: currentBold,
+            underline: currentUnderline,
+            lineNumber: lineCount,
+          });
+          newCommandMap.set(lineCount, {
+            align: currentAlign,
+            bold: currentBold,
+            underline: currentUnderline,
+            commands: [...lineCommands],
+          });
+          lineCount++;
+          lineCommands = [];
+          currentLine = '';
+          i++;
+          continue;
+        }
+
+        // Printable ASCII
+        if (byte >= 0x20 && byte <= 0x7e) {
+          currentLine += String.fromCharCode(byte);
+          i++;
+          continue;
+        }
+
+        // Skip other bytes
+        i++;
       }
+
+      // Flush remaining line
+      if (currentLine) {
+        lines.push({
+          text: currentLine,
+          align: currentAlign,
+          bold: currentBold,
+          underline: currentUnderline,
+          lineNumber: lineCount,
+        });
+        newCommandMap.set(lineCount, {
+          align: currentAlign,
+          bold: currentBold,
+          underline: currentUnderline,
+          commands: [...lineCommands],
+        });
+      }
+
+      // Update state
+      commandMap.clear();
+      newCommandMap.forEach((value, key) => commandMap.set(key, value));
+      setPreviewLines(lines);
+    },
+    [commandMap]
+  );
+
+  // Re-parse when bytes change
+  useEffect(() => {
+    if (escposBytes) {
+      parseEscPos(escposBytes);
     }
-  }, [preview]);
+  }, [escposBytes, parseEscPos]);
+
+  // Handle right-click on line
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+
+      const target = event.currentTarget;
+      const lineNumber = parseInt(target.dataset.line || '0');
+
+      if (isNaN(lineNumber)) return;
+
+      const lineState = commandMap.get(lineNumber);
+      if (!lineState) return;
+
+      setContextMenu({
+        lineNumber,
+        attributes: {
+          align: lineState.align,
+          bold: lineState.bold,
+          underline: lineState.underline,
+        },
+        commands: lineState.commands,
+        position: { x: event.pageX, y: event.pageY },
+      });
+    },
+    [commandMap]
+  );
+
+  // Handle context menu actions
+  const handleToggleBold = useCallback(
+    (lineNumber: number, currentValue: boolean) => {
+      // Pass code modification request back to Editor
+      const newValue = !currentValue;
+      onContextMenuAction(
+        lineNumber,
+        `p.set(bold=${newValue ? 'True' : 'False'})`
+      );
+    },
+    [onContextMenuAction]
+  );
+
+  const handleToggleUnderline = useCallback(
+    (lineNumber: number, currentValue: boolean) => {
+      const newValue = !currentValue;
+      onContextMenuAction(lineNumber, `p.set(underline=${newValue ? '1' : '0'})`);
+    },
+    [onContextMenuAction]
+  );
+
+  const handleChangeAlignment = useCallback(
+    (lineNumber: number, newAlign: AlignmentType) => {
+      onContextMenuAction(lineNumber, `p.set(align='${newAlign}')`);
+    },
+    [onContextMenuAction]
+  );
 
   return (
     <div className="receipt-preview">
@@ -27,15 +308,51 @@ export default function ReceiptPreview({ preview, isLoading }: ReceiptPreviewPro
       <div className="receipt-paper">
         {isLoading ? (
           <div className="loading-indicator">Generating preview...</div>
+        ) : escposBytes ? (
+          <div className="receipt-content">
+            {previewLines.map((line, index) => {
+              const LineTag = line.bold ? 'strong' : 'span';
+              const content = line.underline ? (
+                <u>
+                  <LineTag>{line.text || '\u00A0'}</LineTag>
+                </u>
+              ) : (
+                <LineTag>{line.text || '\u00A0'}</LineTag>
+              );
+
+              return (
+                <div
+                  key={index}
+                  className={`receipt-line ${line.align}`}
+                  data-line={line.lineNumber}
+                  data-align={line.align}
+                  data-bold={line.bold}
+                  data-underline={line.underline}
+                  onContextMenu={handleContextMenu}
+                >
+                  {content}
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <iframe
-            ref={iframeRef}
-            className="receipt-iframe"
-            title="Receipt Preview"
-            sandbox="allow-scripts allow-same-origin"
-          />
+          <div className="receipt-content">No preview available</div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <ContextMenu
+          lineNumber={contextMenu.lineNumber}
+          attributes={contextMenu.attributes}
+          commands={contextMenu.commands}
+          position={contextMenu.position}
+          onClose={() => setContextMenu(null)}
+          onToggleBold={handleToggleBold}
+          onToggleUnderline={handleToggleUnderline}
+          onChangeAlignment={handleChangeAlignment}
+        />
+      )}
     </div>
   );
 }

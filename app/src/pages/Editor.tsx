@@ -4,6 +4,7 @@ import { usePrinterClient } from '@/hooks/usePrinterClient';
 import { HexFormatter } from '@/utils/hexFormatter';
 import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
 import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
+import { CodeModifier } from '@/utils/codeModifier';
 import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
@@ -193,6 +194,40 @@ export default function Editor() {
     }
   };
 
+  // Handle context menu actions
+  const handleContextMenuAction = useCallback((lineNumber: number, setCommand: string) => {
+    const modifier = new CodeModifier(code);
+    const codeLineNumber = modifier.findCodeLineForPreviewLine(lineNumber);
+
+    if (codeLineNumber === -1) {
+      console.error('Could not find code line for preview line', lineNumber);
+      return;
+    }
+
+    // Extract attribute and value from setCommand (e.g., "p.set(bold=True)")
+    const match = setCommand.match(/p\.set\((\w+)=(.+)\)/);
+    if (!match) {
+      console.error('Invalid set command:', setCommand);
+      return;
+    }
+
+    const [, attribute, valueStr] = match;
+    let value: string | boolean | number;
+
+    // Parse value
+    if (valueStr === 'True') value = true;
+    else if (valueStr === 'False') value = false;
+    else if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
+      value = valueStr.slice(1, -1); // Remove quotes
+    } else {
+      value = parseInt(valueStr, 10);
+    }
+
+    modifier.insertSetCall(codeLineNumber, attribute, value);
+    const newCode = modifier.getModifiedCode();
+    setCode(newCode);
+  }, [code]);
+
   return (
     <div className="editor">
       <header className="editor-header">
@@ -239,7 +274,11 @@ export default function Editor() {
         </div>
 
         <div className="preview-panel">
-          <ReceiptPreview preview={receiptData.preview} isLoading={isExecuting} />
+          <ReceiptPreview
+            escposBytes={receiptData.escposBytes}
+            isLoading={isExecuting}
+            onContextMenuAction={handleContextMenuAction}
+          />
 
           <PrinterControls
             printer={printer}
