@@ -1,0 +1,64 @@
+{
+  "name": "Thermal Print Preview",
+  "short_name": "Print Preview",
+  "description": "Preview and print receipts, to-do lists, and images on thermal printers",
+  "start_url": "/editor.html",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#0e639c",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "share_target": {
+    "action": "/editor.html",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "image",
+          "accept": ["image/*"]
+        }
+      ]
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Quick Print",
+      "short_name": "Print",
+      "description": "Quick print with templates",
+      "url": "/editor.html?template=quick",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Date Stamp",
+      "short_name": "Date",
+      "description": "Print current date/time",
+      "url": "/editor.html?template=date",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "To-Do List",
+      "short_name": "To-Do",
+      "description": "Print to-do list",
+      "url": "/editor.html?template=todo",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

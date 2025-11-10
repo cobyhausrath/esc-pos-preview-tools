@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate PWA Icons</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .icon-container {
+            display: inline-block;
+            margin: 20px;
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            background: white;
+            display: block;
+            margin: 10px auto;
+        }
+        button {
+            padding: 10px 20px;
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        h1 {
+            color: #333;
+        }
+        .instructions {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            max-width: 600px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PWA Icon Generator</h1>
+
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Click "Generate Icons" below</li>
+            <li>Right-click each icon and "Save Image As..."</li>
+            <li>Save as <code>icon-192.png</code> and <code>icon-512.png</code></li>
+            <li>Place both files in the <code>/web</code> directory</li>
+        </ol>
+    </div>
+
+    <button onclick="generateIcons()">Generate Icons</button>
+
+    <div id="icons"></div>
+
+    <script>
+        function generateIcons() {
+            const sizes = [192, 512];
+            const iconsDiv = document.getElementById('icons');
+            iconsDiv.innerHTML = '';
+
+            sizes.forEach(size => {
+                // Create container
+                const container = document.createElement('div');
+                container.className = 'icon-container';
+
+                // Create title
+                const title = document.createElement('h3');
+                title.textContent = `${size}x${size}`;
+                container.appendChild(title);
+
+                // Create canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+
+                // Draw icon
+                drawIcon(ctx, size);
+
+                container.appendChild(canvas);
+
+                // Add download button
+                const btn = document.createElement('button');
+                btn.textContent = `Download icon-${size}.png`;
+                btn.onclick = () => {
+                    const link = document.createElement('a');
+                    link.download = `icon-${size}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                };
+                container.appendChild(btn);
+
+                iconsDiv.appendChild(container);
+            });
+        }
+
+        function drawIcon(ctx, size) {
+            // Background
+            ctx.fillStyle = '#0e639c';
+            ctx.fillRect(0, 0, size, size);
+
+            // Printer icon (simplified)
+            ctx.fillStyle = 'white';
+
+            const scale = size / 192;
+            const centerX = size / 2;
+            const centerY = size / 2;
+
+            // Printer body
+            const printerWidth = 100 * scale;
+            const printerHeight = 60 * scale;
+            const printerX = centerX - printerWidth / 2;
+            const printerY = centerY - printerHeight / 2;
+
+            ctx.fillRect(printerX, printerY, printerWidth, printerHeight);
+
+            // Printer top
+            ctx.fillRect(printerX + 10 * scale, printerY - 20 * scale, printerWidth - 20 * scale, 20 * scale);
+
+            // Paper coming out
+            ctx.fillStyle = '#f0f0f0';
+            const paperWidth = 60 * scale;
+            const paperHeight = 40 * scale;
+            const paperX = centerX - paperWidth / 2;
+            const paperY = printerY + printerHeight - 10 * scale;
+
+            ctx.fillRect(paperX, paperY, paperWidth, paperHeight);
+
+            // Paper lines
+            ctx.strokeStyle = '#0e639c';
+            ctx.lineWidth = 2 * scale;
+            for (let i = 0; i < 4; i++) {
+                const lineY = paperY + 10 * scale + i * 8 * scale;
+                ctx.beginPath();
+                ctx.moveTo(paperX + 10 * scale, lineY);
+                ctx.lineTo(paperX + paperWidth - 10 * scale, lineY);
+                ctx.stroke();
+            }
+
+            // Printer button (small circle)
+            ctx.fillStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.arc(printerX + printerWidth - 20 * scale, printerY + 15 * scale, 5 * scale, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Auto-generate on load
+        window.addEventListener('load', generateIcons);
+    </script>
+</body>
+</html>

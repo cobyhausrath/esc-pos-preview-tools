@@ -2,8 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESC-POS Receipt Editor - Powered by Pyodide</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="description" content="Preview and print receipts, to-do lists, and images on thermal printers">
+    <meta name="theme-color" content="#0e639c">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Print Preview">
+    <title>Thermal Print Preview - ESC-POS Receipt Editor</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+
+    <!-- Icons for iOS -->
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
 
     <!-- Pyodide -->
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
@@ -370,6 +384,210 @@
         .status-dot.disconnected {
             background: #c5221f;
         }
+
+        /* Template buttons in toolbar */
+        .template-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        button.template {
+            background: #2d572c;
+            font-size: 12px;
+        }
+
+        button.template:hover:not(:disabled) {
+            background: #3d773c;
+        }
+
+        /* Mobile-responsive styles */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+                height: 100vh;
+                overflow: hidden;
+            }
+
+            .editor-pane {
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .preview-pane {
+                flex: 0 0 50vh;
+                border-left: none;
+                border-top: 1px solid #3e3e3e;
+                max-height: 50vh;
+            }
+
+            .toolbar {
+                padding: 8px;
+                gap: 6px;
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .toolbar-group {
+                flex-shrink: 0;
+            }
+
+            .examples {
+                display: none; /* Hide example buttons on mobile */
+            }
+
+            .printer-controls {
+                flex-shrink: 0;
+            }
+
+            button {
+                padding: 10px 14px; /* Larger touch targets */
+                font-size: 14px;
+                white-space: nowrap;
+            }
+
+            button.template {
+                padding: 8px 12px;
+            }
+
+            select {
+                padding: 10px 12px;
+                font-size: 14px;
+            }
+
+            #editor {
+                font-size: 15px; /* Slightly larger for mobile */
+                padding: 12px;
+            }
+
+            .receipt-container {
+                width: 100%;
+                max-width: 320px;
+            }
+
+            .preview-content {
+                padding: 16px;
+            }
+
+            .hex-panel.visible {
+                max-height: 250px; /* Smaller on mobile */
+            }
+
+            /* Show template buttons prominently on mobile */
+            .template-group {
+                order: -1; /* Move to start */
+                width: 100%;
+                margin-bottom: 8px;
+            }
+
+            .divider {
+                display: none; /* Hide dividers on mobile */
+            }
+
+            /* Status in toolbar */
+            #status {
+                font-size: 12px;
+                padding: 6px 10px;
+            }
+
+            .connection-status {
+                font-size: 11px;
+            }
+        }
+
+        /* Portrait mobile - stack vertically */
+        @media (max-width: 480px) and (orientation: portrait) {
+            .toolbar {
+                flex-wrap: wrap;
+            }
+
+            .toolbar-group {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .printer-controls {
+                width: 100%;
+            }
+
+            select {
+                flex: 1;
+            }
+
+            .preview-pane {
+                flex: 0 0 60vh;
+                max-height: 60vh;
+            }
+        }
+
+        /* Landscape mobile - side by side */
+        @media (max-width: 768px) and (orientation: landscape) {
+            body {
+                flex-direction: row;
+            }
+
+            .preview-pane {
+                flex: 0 0 50vw;
+                border-left: 1px solid #3e3e3e;
+                border-top: none;
+                max-height: none;
+            }
+        }
+
+        /* Touch-friendly improvements */
+        @media (hover: none) and (pointer: coarse) {
+            button {
+                min-height: 44px; /* iOS recommended minimum */
+                min-width: 44px;
+            }
+
+            select {
+                min-height: 44px;
+            }
+        }
+
+        /* Install prompt */
+        .install-prompt {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0e639c;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: none;
+            align-items: center;
+            gap: 12px;
+            z-index: 1000;
+            max-width: 90%;
+        }
+
+        .install-prompt.visible {
+            display: flex;
+        }
+
+        .install-prompt button {
+            background: white;
+            color: #0e639c;
+            padding: 8px 16px;
+            margin: 0;
+        }
+
+        .install-prompt button:hover {
+            background: #f0f0f0;
+        }
+
+        .install-prompt .close-btn {
+            background: transparent;
+            color: white;
+            padding: 4px 8px;
+            font-size: 18px;
+        }
     </style>
 </head>
 <body>
@@ -408,6 +626,14 @@
                     <span class="status-dot disconnected"></span>
                     Disconnected
                 </span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="template-group">
+                <button id="template-timestamp" class="template" title="Print current date/time">📅 Now</button>
+                <button id="template-expiry" class="template" title="Print expiration dates">⏰ Expiry</button>
+                <button id="template-todo" class="template" title="Create to-do list">✓ To-Do</button>
             </div>
 
             <div class="divider"></div>
@@ -454,6 +680,13 @@
     </div>
 
     <input type="file" id="file-input" accept=".bin,.txt,*">
+
+    <!-- Install Prompt (shown when PWA can be installed) -->
+    <div id="install-prompt" class="install-prompt">
+        <span>📲 Install app for quick access</span>
+        <button id="install-btn">Install</button>
+        <button class="close-btn" id="install-close">✕</button>
+    </div>
 
     <script type="module">
         // ===================================================================
@@ -684,6 +917,265 @@
         }
 
         // ===================================================================
+        // PWA & Share Target Utilities
+        // ===================================================================
+
+        /**
+         * Register service worker for PWA functionality
+         */
+        async function registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                try {
+                    const registration = await navigator.serviceWorker.register('/sw.js');
+                    console.log('[PWA] Service worker registered:', registration.scope);
+                    return registration;
+                } catch (error) {
+                    console.error('[PWA] Service worker registration failed:', error);
+                    return null;
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Handle PWA install prompt
+         */
+        let deferredInstallPrompt = null;
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            console.log('[PWA] Install prompt available');
+            e.preventDefault();
+            deferredInstallPrompt = e;
+
+            // Show custom install prompt
+            const installPrompt = document.getElementById('install-prompt');
+            if (installPrompt) {
+                installPrompt.classList.add('visible');
+            }
+        });
+
+        /**
+         * Retrieve shared image from IndexedDB
+         */
+        async function getSharedImage(imageId) {
+            return new Promise((resolve, reject) => {
+                const dbRequest = indexedDB.open('SharedImages', 1);
+
+                dbRequest.onerror = () => reject(dbRequest.error);
+
+                dbRequest.onsuccess = () => {
+                    const db = dbRequest.result;
+                    const transaction = db.transaction(['images'], 'readonly');
+                    const store = transaction.objectStore('images');
+                    const getRequest = store.get(imageId);
+
+                    getRequest.onsuccess = () => {
+                        const result = getRequest.result;
+                        if (result) {
+                            resolve({
+                                data: result.data,
+                                type: result.type
+                            });
+                            // Clean up - delete the shared image
+                            const deleteTransaction = db.transaction(['images'], 'readwrite');
+                            deleteTransaction.objectStore('images').delete(imageId);
+                        } else {
+                            reject(new Error('Image not found'));
+                        }
+                    };
+
+                    getRequest.onerror = () => reject(getRequest.error);
+                };
+            });
+        }
+
+        /**
+         * Template Generators
+         */
+        const Templates = {
+            /**
+             * Generate timestamp slip
+             */
+            timestamp() {
+                const now = new Date();
+                const date = now.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                const time = now.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+
+                return `from escpos.printer import Dummy
+
+# Create printer
+p = Dummy()
+
+# Current date/time stamp
+p.set(align='center')
+p.set(bold=True)
+p.text('TIMESTAMP\\n')
+p.set(bold=False)
+
+p.text('\\n')
+
+p.set(align='left')
+p.text('Date: ${date}\\n')
+p.text('Time: ${time}\\n')
+
+p.text('\\n')
+
+p.set(align='center')
+p.text('--------------------------------\\n')
+`;
+            },
+
+            /**
+             * Generate expiration date calculator
+             */
+            expiry() {
+                const now = new Date();
+                const oneWeek = new Date(now);
+                oneWeek.setDate(oneWeek.getDate() + 7);
+                const twoWeeks = new Date(now);
+                twoWeeks.setDate(twoWeeks.getDate() + 14);
+                const oneMonth = new Date(now);
+                oneMonth.setMonth(oneMonth.getMonth() + 1);
+
+                const formatDate = (d) => d.toLocaleDateString('en-US', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    year: 'numeric'
+                });
+
+                return `from escpos.printer import Dummy
+
+# Create printer
+p = Dummy()
+
+# Expiration dates
+p.set(align='center')
+p.set(bold=True)
+p.text('EXPIRATION DATES\\n')
+p.set(bold=False)
+
+p.text('\\n')
+
+p.set(align='left')
+p.text('Opened: ${formatDate(now)}\\n')
+p.text('\\n')
+
+p.text('+1 week:  ${formatDate(oneWeek)}\\n')
+p.text('+2 weeks: ${formatDate(twoWeeks)}\\n')
+p.text('+1 month: ${formatDate(oneMonth)}\\n')
+
+p.text('\\n')
+
+p.set(align='center')
+p.text('--------------------------------\\n')
+`;
+            },
+
+            /**
+             * Generate to-do list template
+             */
+            todo(text = '') {
+                // Parse text into todo items if provided
+                let items = [];
+                if (text) {
+                    const lines = text.split('\\n').filter(line => line.trim());
+                    items = lines.map(line => {
+                        // Check if it's a Google Keep style checkbox
+                        const keepMatch = line.match(/^\\[([x ])\\]\\s*(.+)$/);
+                        if (keepMatch) {
+                            return {
+                                checked: keepMatch[1] === 'x',
+                                text: keepMatch[2]
+                            };
+                        }
+                        // Otherwise treat as unchecked item
+                        return {
+                            checked: false,
+                            text: line.replace(/^[-*•]\\s*/, '')
+                        };
+                    });
+                }
+
+                // Generate code
+                let code = `from escpos.printer import Dummy
+
+# Create printer
+p = Dummy()
+
+# To-Do List
+p.set(align='center')
+p.set(bold=True)
+p.text('TO-DO LIST\\n')
+p.set(bold=False)
+
+p.text('\\n')
+
+p.set(align='left')
+`;
+
+                if (items.length > 0) {
+                    items.forEach(item => {
+                        const checkbox = item.checked ? '[x]' : '[ ]';
+                        const escaped = item.text.replace(/'/g, "\\\\'");
+                        code += `p.text('${checkbox} ${escaped}\\\\n')\\n`;
+                    });
+                } else {
+                    code += `p.text('[ ] Task 1\\\\n')
+p.text('[ ] Task 2\\\\n')
+p.text('[ ] Task 3\\\\n')
+`;
+                }
+
+                code += `
+p.text('\\\\n')
+
+p.set(align='center')
+p.text('--------------------------------\\\\n')
+`;
+
+                return code;
+            },
+
+            /**
+             * Generate note from shared text
+             */
+            note(text, title = 'NOTE') {
+                const escaped = text.replace(/'/g, "\\\\'").replace(/\\n/g, '\\\\n');
+
+                return `from escpos.printer import Dummy
+
+# Create printer
+p = Dummy()
+
+# Note
+p.set(align='center')
+p.set(bold=True)
+p.text('${title.toUpperCase()}\\\\n')
+p.set(bold=False)
+
+p.text('\\\\n')
+
+p.set(align='left')
+p.text('${escaped}\\\\n')
+
+p.text('\\\\n')
+
+p.set(align='center')
+p.text('--------------------------------\\\\n')
+`;
+            }
+        };
+
+        // ===================================================================
         // Receipt Editor - Main Application
         // ===================================================================
 
@@ -811,6 +1303,264 @@
                 } catch (error) {
                     this.updateStatus('error', `Failed to initialize: ${error.message}`);
                     console.error(error);
+                }
+            }
+
+            /**
+             * Handle shared content from URL parameters
+             */
+            async handleSharedContent() {
+                const params = new URLSearchParams(window.location.search);
+
+                // Check for shared text
+                if (params.has('shared') && params.get('shared') === 'text') {
+                    const content = params.get('content');
+                    if (content) {
+                        console.log('[Share] Handling shared text:', content.substring(0, 100));
+
+                        // Check if it looks like a to-do list
+                        if (content.match(/^\[[ x]\]/m) || content.match(/^[-*•]\s/m)) {
+                            const code = Templates.todo(content);
+                            document.getElementById('editor').value = code;
+                        } else {
+                            // Regular note
+                            const code = Templates.note(content);
+                            document.getElementById('editor').value = code;
+                        }
+
+                        this.runCode();
+
+                        // Clear URL parameters after handling
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                }
+
+                // Check for shared image
+                if (params.has('imageId')) {
+                    const imageId = params.get('imageId');
+                    const imageType = params.get('imageType');
+
+                    console.log('[Share] Handling shared image:', imageId, imageType);
+
+                    try {
+                        const imageData = await getSharedImage(imageId);
+                        await this.handleSharedImage(imageData.data, imageData.type);
+
+                        // Clear URL parameters after handling
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    } catch (error) {
+                        console.error('[Share] Failed to load shared image:', error);
+                        alert('Failed to load shared image. Please try again.');
+                    }
+                }
+
+                // Check for template shortcuts
+                if (params.has('template')) {
+                    const template = params.get('template');
+                    console.log('[Share] Loading template:', template);
+
+                    switch (template) {
+                        case 'date':
+                            this.loadTemplate('timestamp');
+                            break;
+                        case 'todo':
+                            this.loadTemplate('todo');
+                            break;
+                        case 'quick':
+                            // Show quick action menu
+                            break;
+                    }
+
+                    // Clear URL parameters after handling
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
+            }
+
+            /**
+             * Handle shared image - process and generate ESC-POS code
+             */
+            async handleSharedImage(arrayBuffer, mimeType) {
+                this.updateStatus('loading', 'Processing image...');
+
+                try {
+                    // Create image from array buffer
+                    const blob = new Blob([arrayBuffer], { type: mimeType });
+                    const imageUrl = URL.createObjectURL(blob);
+                    const img = new Image();
+
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = imageUrl;
+                    });
+
+                    // Process image with dithering
+                    const processedData = await this.processImageForPrinting(img);
+
+                    // Generate python-escpos code for the image
+                    const code = this.generateImageCode(processedData);
+                    document.getElementById('editor').value = code;
+
+                    this.runCode();
+
+                    URL.revokeObjectURL(imageUrl);
+                } catch (error) {
+                    this.updateStatus('error', 'Image processing failed');
+                    console.error('[Image] Processing error:', error);
+                    alert(`Image processing failed: ${error.message}`);
+                }
+            }
+
+            /**
+             * Process image for thermal printing
+             * Applies Floyd-Steinberg dithering and resizes to printer width
+             */
+            async processImageForPrinting(img, maxWidth = 384) {
+                // Create canvas for image processing
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                // Calculate dimensions maintaining aspect ratio
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.floor((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                // Draw image
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Get image data
+                const imageData = ctx.getImageData(0, 0, width, height);
+                const data = imageData.data;
+
+                // Convert to grayscale and apply Floyd-Steinberg dithering
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const idx = (y * width + x) * 4;
+
+                        // Convert to grayscale
+                        const gray = Math.floor(
+                            data[idx] * 0.299 +
+                            data[idx + 1] * 0.587 +
+                            data[idx + 2] * 0.114
+                        );
+
+                        // Threshold and calculate error
+                        const newVal = gray < 128 ? 0 : 255;
+                        const error = gray - newVal;
+
+                        // Set pixel
+                        data[idx] = data[idx + 1] = data[idx + 2] = newVal;
+
+                        // Distribute error (Floyd-Steinberg)
+                        if (x + 1 < width) {
+                            const nextIdx = (y * width + x + 1) * 4;
+                            data[nextIdx] += error * 7 / 16;
+                            data[nextIdx + 1] += error * 7 / 16;
+                            data[nextIdx + 2] += error * 7 / 16;
+                        }
+
+                        if (y + 1 < height) {
+                            if (x > 0) {
+                                const diagIdx = ((y + 1) * width + x - 1) * 4;
+                                data[diagIdx] += error * 3 / 16;
+                                data[diagIdx + 1] += error * 3 / 16;
+                                data[diagIdx + 2] += error * 3 / 16;
+                            }
+
+                            const belowIdx = ((y + 1) * width + x) * 4;
+                            data[belowIdx] += error * 5 / 16;
+                            data[belowIdx + 1] += error * 5 / 16;
+                            data[belowIdx + 2] += error * 5 / 16;
+
+                            if (x + 1 < width) {
+                                const diagIdx = ((y + 1) * width + x + 1) * 4;
+                                data[diagIdx] += error * 1 / 16;
+                                data[diagIdx + 1] += error * 1 / 16;
+                                data[diagIdx + 2] += error * 1 / 16;
+                            }
+                        }
+                    }
+                }
+
+                return { width, height, data: imageData };
+            }
+
+            /**
+             * Generate python-escpos code for printing an image
+             */
+            generateImageCode(imageData) {
+                // Convert image data to 1-bit bitmap
+                const { width, height, data } = imageData;
+                const bitmap = [];
+
+                for (let y = 0; y < height; y++) {
+                    const row = [];
+                    for (let x = 0; x < width; x++) {
+                        const idx = (y * width + x) * 4;
+                        row.push(data.data[idx] < 128 ? 1 : 0);
+                    }
+                    bitmap.push(row);
+                }
+
+                // Generate base64 representation for embedding (simplified)
+                // In production, you'd want to properly encode this
+                const code = `from escpos.printer import Dummy
+from PIL import Image
+import io
+import base64
+
+# Create printer
+p = Dummy()
+
+# Note: Image printing requires PIL/Pillow
+# For now, we'll just print a placeholder
+p.set(align='center')
+p.text('IMAGE (${width}x${height})\\n')
+p.text('\\n')
+
+# In a real implementation, you would:
+# 1. Convert the dithered image to a format python-escpos can use
+# 2. Use p.image() to print it
+# 3. Or use direct raster commands
+
+p.text('Image printing coming soon!\\n')
+`;
+
+                return code;
+            }
+
+            /**
+             * Load a template by name
+             */
+            loadTemplate(name) {
+                console.log('[Template] Loading:', name);
+                let code = '';
+
+                switch (name) {
+                    case 'timestamp':
+                        code = Templates.timestamp();
+                        break;
+                    case 'expiry':
+                        code = Templates.expiry();
+                        break;
+                    case 'todo':
+                        code = Templates.todo();
+                        break;
+                    default:
+                        console.error('[Template] Unknown template:', name);
+                        return;
+                }
+
+                document.getElementById('editor').value = code;
+                if (this.isReady) {
+                    this.runCode();
                 }
             }
 
@@ -1356,6 +2106,9 @@ list(p.output)
         const editor = new ReceiptEditor();
 
         window.addEventListener('load', async () => {
+            // Register service worker for PWA
+            registerServiceWorker();
+
             // Setup event listeners and get button references
             const editorEl = document.getElementById('editor');
             const runBtn = document.getElementById('run-btn');
@@ -1366,6 +2119,16 @@ list(p.output)
             const printBtn = document.getElementById('print-btn');
             const printerSelect = document.getElementById('printer-select');
             const fileInput = document.getElementById('file-input');
+
+            // Template buttons
+            const templateTimestamp = document.getElementById('template-timestamp');
+            const templateExpiry = document.getElementById('template-expiry');
+            const templateTodo = document.getElementById('template-todo');
+
+            // Install prompt
+            const installBtn = document.getElementById('install-btn');
+            const installClose = document.getElementById('install-close');
+            const installPrompt = document.getElementById('install-prompt');
 
             // Disable buttons until ready
             runBtn.disabled = true;
@@ -1429,8 +2192,31 @@ list(p.output)
             document.getElementById('example-formatted').addEventListener('click', () => editor.loadExample('formatted'));
             document.getElementById('example-receipt').addEventListener('click', () => editor.loadExample('receipt'));
 
+            // Template buttons
+            templateTimestamp.addEventListener('click', () => editor.loadTemplate('timestamp'));
+            templateExpiry.addEventListener('click', () => editor.loadTemplate('expiry'));
+            templateTodo.addEventListener('click', () => editor.loadTemplate('todo'));
+
+            // Install prompt handlers
+            installBtn.addEventListener('click', async () => {
+                if (deferredInstallPrompt) {
+                    deferredInstallPrompt.prompt();
+                    const { outcome } = await deferredInstallPrompt.userChoice;
+                    console.log('[PWA] Install prompt result:', outcome);
+                    deferredInstallPrompt = null;
+                    installPrompt.classList.remove('visible');
+                }
+            });
+
+            installClose.addEventListener('click', () => {
+                installPrompt.classList.remove('visible');
+            });
+
             // Initialize editor (this will enable buttons when ready)
             await editor.init();
+
+            // Handle shared content from URL parameters (after init)
+            await editor.handleSharedContent();
 
             // Try to connect to printer bridge (optional)
             // This will fail silently if bridge is not running
