@@ -3,6 +3,7 @@
  */
 
 import { Command } from '../parser/types';
+import { getPreferredPrinter, getPrinterById, PrinterDevice } from '../devices/printers';
 
 interface RenderState {
   bold: boolean;
@@ -11,11 +12,31 @@ interface RenderState {
   size: number;
 }
 
-export class HTMLRenderer {
-  private width: number;
+interface HTMLRendererOptions {
+  /** Character width (deprecated - use printer instead) */
+  width?: number;
+  /** Printer device ID or device object */
+  printer?: string | PrinterDevice;
+}
 
-  constructor(options: { width?: number } = {}) {
-    this.width = options.width || 48;
+export class HTMLRenderer {
+  private printer: PrinterDevice;
+
+  constructor(options: HTMLRendererOptions = {}) {
+    // Determine printer configuration
+    if (typeof options.printer === 'string') {
+      this.printer = getPrinterById(options.printer) || getPreferredPrinter();
+    } else if (options.printer) {
+      this.printer = options.printer;
+    } else {
+      this.printer = getPreferredPrinter();
+    }
+
+    // Legacy width option support - if provided, we could create a custom printer
+    // For now, we ignore it and use the printer's default width
+    if (options.width) {
+      console.warn('HTMLRenderer: width option is deprecated, use printer option instead');
+    }
   }
 
   render(commands: Command[]): string {
@@ -131,12 +152,14 @@ export class HTMLRenderer {
   }
 
   private getHeader(): string {
+    const pixelWidth = Math.round((this.printer.printableWidthMm / 25.4) * 96); // Convert mm to CSS pixels at 96 DPI
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ESC/POS Preview - Thermal Printer Simulation</title>
+  <title>ESC/POS Preview - ${this.printer.manufacturer} ${this.printer.model}</title>
   <style>
     body {
       margin: 0;
@@ -151,7 +174,7 @@ export class HTMLRenderer {
     .receipt-container {
       /* Thermal paper background - subtle off-white with hint of warmth */
       background: #fdfcfa;
-      width: ${this.width * 10}px;
+      width: ${pixelWidth}px;
       padding: 20px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.1);
       font-size: 14px;
@@ -316,7 +339,10 @@ export class HTMLRenderer {
   <div class="controls">
     <h3>🖨️ Thermal Printer Preview</h3>
     <div style="font-size: 10px; color: #aaa; margin-bottom: 8px;">
-      Resolution: 203 DPI (80mm)
+      <strong>${this.printer.manufacturer} ${this.printer.model}</strong><br>
+      Resolution: ${this.printer.dpi} DPI<br>
+      Paper: ${this.printer.paperWidthMm}mm (${this.printer.printableWidthMm}mm printable)<br>
+      Width: ${this.printer.fonts.fontA.charactersPerLine} chars (Font A)
     </div>
     <div class="toggle-container">
       <label class="toggle-switch">
