@@ -79,10 +79,19 @@ export default function Editor() {
       const { hex, stats } = HexFormatter.formatWithStats(bytes);
 
       // Parse ESC-POS bytes to generate preview HTML
+      console.log('Creating parser and renderer...');
       const parser = new CommandParser();
       const renderer = new HTMLRenderer();
+      console.log('Parser:', parser);
+      console.log('Renderer:', renderer);
+
       const parseResult = parser.parse(bytes);
+      console.log('Parse result:', parseResult);
+
       const preview = renderer.render(parseResult.commands);
+      console.log('Preview type:', typeof preview);
+      console.log('Preview length:', preview?.length);
+      console.log('Preview substring:', preview?.substring?.(0, 100));
 
       setReceiptData({
         code,
