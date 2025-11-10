@@ -17,16 +17,26 @@ export class CodeModifier {
   /**
    * Find the code line that generates a specific preview line
    *
-   * This works by counting p.text() calls in the code. Each p.text() call
-   * corresponds to one or more preview lines.
+   * Uses regex to match p.text() calls while avoiding false positives
+   * from comments, string literals, or other objects.
    *
    * @param previewLine - Preview line number (0-indexed)
    * @returns Code line number or -1 if not found
    */
   findCodeLineForPreviewLine(previewLine: number): number {
     let textCallCount = 0;
+    // Match p.text( at start of line (optionally indented, not in comments)
+    // Handles variations like: p.text(, p . text(, etc.
+    const textCallRegex = /^\s*p\s*\.\s*text\s*\(/;
+
     for (let i = 0; i < this.lines.length; i++) {
-      if (this.lines[i].includes('p.text(')) {
+      const line = this.lines[i].trim();
+
+      // Skip comment lines
+      if (line.startsWith('#')) continue;
+
+      // Check if this line contains a p.text() call
+      if (textCallRegex.test(this.lines[i])) {
         if (textCallCount === previewLine) {
           return i;
         }
@@ -42,6 +52,8 @@ export class CodeModifier {
    * If the previous line already has a p.set() call for the same attribute,
    * it will be updated. Otherwise, a new line is inserted.
    *
+   * Preserves the indentation of the target line to avoid IndentationError.
+   *
    * @param lineNumber - Line number to insert before
    * @param attribute - Attribute to set (e.g., 'bold', 'align')
    * @param value - Value to set
@@ -51,6 +63,14 @@ export class CodeModifier {
     attribute: string,
     value: string | boolean | number
   ): void {
+    // Validate line number
+    if (lineNumber < 0 || lineNumber >= this.lines.length) {
+      console.error(
+        `Invalid line number: ${lineNumber} (code has ${this.lines.length} lines)`
+      );
+      return;
+    }
+
     // Format the value for Python
     let formattedValue: string;
     if (typeof value === 'boolean') {
@@ -61,19 +81,24 @@ export class CodeModifier {
       formattedValue = value.toString();
     }
 
-    const setCall = `p.set(${attribute}=${formattedValue})`;
+    // Get indentation from the target line
+    const targetLine = this.lines[lineNumber];
+    const indentMatch = targetLine.match(/^(\s*)/);
+    const indent = indentMatch ? indentMatch[1] : '';
+
+    const setCall = `${indent}p.set(${attribute}=${formattedValue})`;
 
     // Check if previous line has a set() call for this attribute
     if (lineNumber > 0) {
       const prevLine = this.lines[lineNumber - 1];
       if (prevLine.includes(`p.set(${attribute}=`)) {
-        // Update existing set() call
+        // Update existing set() call, preserving indentation
         this.lines[lineNumber - 1] = setCall;
         return;
       }
     }
 
-    // Insert new set() call
+    // Insert new set() call with proper indentation
     this.lines.splice(lineNumber, 0, setCall);
   }
 
