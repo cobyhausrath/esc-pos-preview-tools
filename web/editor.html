@@ -42,7 +42,8 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            min-width: 0;
+            min-width: 200px;
+            position: relative;
         }
 
         .preview-pane {
@@ -52,6 +53,36 @@
             background: #252526;
             display: flex;
             flex-direction: column;
+            min-width: 200px;
+            position: relative;
+        }
+
+        .resize-handle {
+            position: absolute;
+            top: 0;
+            left: -4px;
+            width: 8px;
+            height: 100%;
+            cursor: col-resize;
+            z-index: 10;
+            background: transparent;
+        }
+
+        .resize-handle:hover {
+            background: #007acc;
+        }
+
+        .resize-handle.dragging {
+            background: #007acc;
+        }
+
+        body.resizing {
+            cursor: col-resize;
+            user-select: none;
+        }
+
+        body.resizing * {
+            cursor: col-resize !important;
         }
 
         .toolbar {
@@ -423,6 +454,10 @@
                 max-height: 50vh;
             }
 
+            .resize-handle {
+                display: none; /* Hide resize handle on mobile */
+            }
+
             .toolbar {
                 padding: 8px;
                 gap: 6px;
@@ -654,7 +689,8 @@
         <textarea id="editor" spellcheck="false"></textarea>
     </div>
 
-    <div class="preview-pane">
+    <div class="preview-pane" id="preview-pane">
+        <div class="resize-handle" id="resize-handle"></div>
         <!-- HEX View Panel (Collapsible) -->
         <div id="hex-panel" class="hex-panel">
             <div class="hex-header">
@@ -1174,6 +1210,81 @@ p.text('--------------------------------\\\\n')
 `;
             }
         };
+
+        // ===================================================================
+        // Resize Handler - Draggable pane resizing
+        // ===================================================================
+
+        class ResizeHandler {
+            constructor(handle, previewPane) {
+                this.handle = handle;
+                this.previewPane = previewPane;
+                this.isDragging = false;
+                this.startX = 0;
+                this.startWidth = 0;
+
+                // Load saved width from localStorage
+                const savedWidth = localStorage.getItem('preview-pane-width');
+                if (savedWidth) {
+                    this.previewPane.style.flexBasis = savedWidth + 'px';
+                }
+
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                // Mouse events
+                this.handle.addEventListener('mousedown', (e) => this.startDrag(e));
+                document.addEventListener('mousemove', (e) => this.drag(e));
+                document.addEventListener('mouseup', () => this.endDrag());
+
+                // Touch events
+                this.handle.addEventListener('touchstart', (e) => this.startDrag(e.touches[0]));
+                document.addEventListener('touchmove', (e) => {
+                    if (this.isDragging) {
+                        e.preventDefault();
+                        this.drag(e.touches[0]);
+                    }
+                }, { passive: false });
+                document.addEventListener('touchend', () => this.endDrag());
+            }
+
+            startDrag(e) {
+                this.isDragging = true;
+                this.startX = e.clientX;
+                this.startWidth = this.previewPane.offsetWidth;
+
+                this.handle.classList.add('dragging');
+                document.body.classList.add('resizing');
+            }
+
+            drag(e) {
+                if (!this.isDragging) return;
+
+                const deltaX = this.startX - e.clientX;
+                const newWidth = this.startWidth + deltaX;
+
+                // Enforce min/max constraints
+                const minWidth = 200;
+                const maxWidth = window.innerWidth - 200;
+
+                if (newWidth >= minWidth && newWidth <= maxWidth) {
+                    this.previewPane.style.flexBasis = newWidth + 'px';
+                }
+            }
+
+            endDrag() {
+                if (!this.isDragging) return;
+
+                this.isDragging = false;
+                this.handle.classList.remove('dragging');
+                document.body.classList.remove('resizing');
+
+                // Save width to localStorage
+                const width = this.previewPane.offsetWidth;
+                localStorage.setItem('preview-pane-width', width);
+            }
+        }
 
         // ===================================================================
         // Receipt Editor - Main Application
@@ -2108,6 +2219,11 @@ list(p.output)
         window.addEventListener('load', async () => {
             // Register service worker for PWA
             registerServiceWorker();
+
+            // Setup resize handler
+            const resizeHandle = document.getElementById('resize-handle');
+            const previewPane = document.getElementById('preview-pane');
+            const resizeHandler = new ResizeHandler(resizeHandle, previewPane);
 
             // Setup event listeners and get button references
             const editorEl = document.getElementById('editor');
