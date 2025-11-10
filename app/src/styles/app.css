@@ -691,6 +691,14 @@ body {
   word-break: break-word;
 }
 
+.receipt-iframe {
+  width: 100%;
+  min-height: 600px;
+  border: none;
+  background: #f5f5f5;
+  display: block;
+}
+
 .printer-controls {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
