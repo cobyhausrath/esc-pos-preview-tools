@@ -5,17 +5,46 @@
  * Creates a GitHub Pages site demonstrating ESC/POS command comparisons
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { CommandParser } from '../src/parser/CommandParser';
 import { HTMLRenderer } from '../src/renderer/HTMLRenderer';
 import { examples, DemoExample } from '../demo/examples';
 
 const OUTPUT_DIR = join(process.cwd(), 'demo-output');
+const WEB_DIR = join(process.cwd(), 'web');
 
 // Ensure output directory exists
 if (!existsSync(OUTPUT_DIR)) {
   mkdirSync(OUTPUT_DIR, { recursive: true });
+}
+
+/**
+ * Copy directory recursively
+ */
+function copyDirectory(src: string, dest: string) {
+  if (!existsSync(src)) {
+    console.log(`⚠️  Source directory not found: ${src}`);
+    return;
+  }
+
+  if (!existsSync(dest)) {
+    mkdirSync(dest, { recursive: true });
+  }
+
+  const entries = readdirSync(src);
+
+  for (const entry of entries) {
+    const srcPath = join(src, entry);
+    const destPath = join(dest, entry);
+    const stat = statSync(srcPath);
+
+    if (stat.isDirectory()) {
+      copyDirectory(srcPath, destPath);
+    } else {
+      copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 /**
@@ -583,7 +612,8 @@ function generateIndexPage(): string {
     <h1>ESC/POS Preview Tools</h1>
     <p>Parse, render, and preview thermal receipt printer commands in your browser</p>
     <div class="hero-buttons">
-      <a href="https://github.com/cobyhausrath/esc-pos-preview-tools" class="btn">View on GitHub</a>
+      <a href="editor.html" class="btn">📱 Try the PWA Editor</a>
+      <a href="https://github.com/cobyhausrath/esc-pos-preview-tools" class="btn btn-secondary">View on GitHub</a>
       <a href="https://www.npmjs.com/package/esc-pos-preview-tools" class="btn btn-secondary">Install via NPM</a>
     </div>
   </div>
@@ -615,6 +645,11 @@ ${examples
       <h2>Why Use ESC/POS Preview Tools?</h2>
       <div class="feature-grid">
         <div class="feature">
+          <div class="feature-icon">📱</div>
+          <h3>PWA Mobile Editor</h3>
+          <p>Share to-do lists and images from your phone for instant printing</p>
+        </div>
+        <div class="feature">
           <div class="feature-icon">🔍</div>
           <h3>Visual Preview</h3>
           <p>See exactly how your receipts will look before printing</p>
@@ -633,6 +668,11 @@ ${examples
           <div class="feature-icon">🎨</div>
           <h3>HTML Rendering</h3>
           <p>Convert printer commands to beautiful HTML previews</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">📴</div>
+          <h3>Offline Support</h3>
+          <p>PWA works offline with service worker caching</p>
         </div>
       </div>
     </div>
@@ -686,8 +726,13 @@ function build() {
   writeFileSync(indexPath, indexHtml, 'utf-8');
   console.log(`✅ Generated: index.html`);
 
+  // Copy web/ directory for PWA editor
+  console.log('\n📱 Copying PWA editor...');
+  copyDirectory(WEB_DIR, OUTPUT_DIR);
+  console.log(`✅ Copied PWA files from web/ to demo-output/`);
+
   console.log(`\n✨ Demo build complete! Output: ${OUTPUT_DIR}`);
-  console.log(`📂 Total files: ${examples.length + 1}`);
+  console.log(`📂 Total files: ${examples.length + 1} + PWA files`);
 }
 
 // Run the build
