@@ -1,6 +1,6 @@
 # ESC/POS Preview Tools
 
-**Parse and render ESC/POS thermal printer commands as HTML** with bidirectional python-escpos conversion.
+**Parse and render ESC/POS thermal printer commands** with a complete toolkit for development, testing, and production printing workflows.
 
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]() [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -8,25 +8,161 @@
 
 ## What Is This?
 
-A TypeScript library and Python toolkit for working with ESC/POS thermal printer commands:
+A comprehensive ESC/POS toolkit with **two main components**:
 
-1. **Parser** - Convert ESC/POS byte sequences into structured commands
-2. **Renderer** - Display receipts as HTML with thermal printer styling
-3. **Python Bridge** - Convert between ESC/POS bytes and python-escpos code
-4. **Browser Editor** - Edit receipts with live preview (powered by Pyodide)
-5. **HEX Viewer** - Inspect binary ESC/POS data with offset/bytes/ASCII display
-6. **Network Printing** - Send receipts to network printers via CLI or browser
+### 1. **Library** (TypeScript) - Parse & Render
+Parse ESC-POS bytes and render as HTML for testing and preview.
+
+### 2. **Spool Service** (Node.js) - Production Printing ⭐ NEW
+Full job approval workflow with web dashboard, API, and chain printing.
+
+---
+
+## 🏗️ Architecture Overview
+
+```mermaid
+flowchart TB
+    subgraph "📦 LIBRARY (TypeScript - Needs Build)"
+        SRC["src/\n(TypeScript)"]
+        BUILD["yarn build\n(tsup)"]
+        DIST["dist/\n(JavaScript)"]
+        SRC -->|tsup| BUILD
+        BUILD --> DIST
+    end
+
+    subgraph "🖥️ SPOOL SERVICE (Node.js - No Build)"
+        SERVER["server/api-server.js\n(Job Management API)"]
+        DASHBOARD["web/dashboard.html\n(Job Approval UI)"]
+        CLI1["bin/escpos-send.js\n(Send to Printer)"]
+        CLI2["bin/printer-bridge.js\n(WebSocket Bridge)"]
+        DB["SQLite Database\n(Jobs, Printers)"]
+
+        DASHBOARD -.WebSocket.-> SERVER
+        SERVER --> DB
+        SERVER --> CLI1
+    end
+
+    subgraph "🐍 PYTHON TOOLS (No Build)"
+        PYTOOLS["python/escpos_cli.py\n(Conversion Tools)"]
+        EDITOR["web/editor.html\n(Pyodide Editor)"]
+        EDITOR -.imports.-> PYTOOLS
+    end
+
+    subgraph "📊 USAGE"
+        NPM["npm install\nesc-pos-preview-tools"]
+        DEMOS["GitHub Pages Demos"]
+        APP1["Your Node.js App"]
+        APP2["Your POS System"]
+
+        DIST --> NPM
+        DIST --> DEMOS
+        DIST --> APP1
+
+        APP2 -->|HTTP POST| SERVER
+        DASHBOARD -->|Approve/Reject| SERVER
+        SERVER -->|Print| CLI1
+    end
+
+    style SRC fill:#e1f5ff
+    style DIST fill:#c8e6c9
+    style SERVER fill:#fff9c4
+    style DASHBOARD fill:#fff9c4
+    style CLI1 fill:#fff9c4
+    style CLI2 fill:#fff9c4
+```
+
+### 🔑 Key Points:
+
+**Library (TypeScript):**
+- ✅ Needs `yarn build` to compile TypeScript → JavaScript
+- 📦 Used by: npm package, GitHub Pages, your applications
+- 🎯 Purpose: Parse ESC-POS, render HTML previews
+
+**Spool Service (Node.js):**
+- ⚡ **No build needed** - runs directly with Node.js
+- 🚀 Ready to use: `yarn server`
+- 🎯 Purpose: Production print job management and approval
+
+**Python Tools:**
+- ⚡ **No build needed** - plain Python scripts
+- 🎯 Purpose: ESC-POS ↔ python-escpos conversion
 
 ---
 
 ## Quick Start
 
+### Option A: Use as Library (Parse & Render)
+
 ```bash
 # Install
-yarn add esc-pos-preview-tools
-
-# Or with npm
 npm install esc-pos-preview-tools
+
+# Use in your code
+import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
+```
+
+### Option B: Run Spool Service (Job Management)
+
+```bash
+# Clone and install
+git clone https://github.com/cobyhausrath/esc-pos-preview-tools.git
+cd esc-pos-preview-tools
+yarn install
+
+# Start spool service (no build needed!)
+yarn server
+
+# Open dashboard
+open web/dashboard.html
+```
+
+See [📖 Spool Service Documentation](#spool-service-job-management) below.
+
+---
+
+## Features
+
+### 📚 Library Features
+
+✅ **Parse ESC/POS Commands** - Text formatting, alignment, paper control
+✅ **Render to HTML** - Thermal printer styling with authentic look
+✅ **TypeScript Support** - Full type definitions and IntelliSense
+
+### 🖨️ Spool Service Features ⭐ NEW
+
+✅ **Job Approval Workflow** - Submit, review, approve/reject, print
+✅ **Web Dashboard** - Real-time job monitoring with WebSocket updates
+✅ **REST API** - Complete job and printer management
+✅ **Chain Printing** - Multi-stage approval (dev → staging → production)
+✅ **SQLite Database** - Persistent job storage and audit trail
+✅ **Multiple Printers** - Physical (TCP/IP) and spool (chaining) support
+
+### 🐍 Python Tools
+
+✅ **Bidirectional Conversion** - ESC-POS ↔ python-escpos
+✅ **CLI Tool** - Convert, verify, and execute
+✅ **Browser Editor** - Edit receipts with live preview (Pyodide)
+✅ **HEX Viewer** - Inspect binary data
+
+### 🔧 CLI Tools
+
+✅ **escpos-send** - Send .bin files to network printers
+✅ **printer-bridge** - WebSocket to TCP bridge
+
+---
+
+## Library Usage (TypeScript)
+
+### Installation
+
+```bash
+npm install esc-pos-preview-tools
+```
+
+**Note:** Library needs to be built from source if you clone the repo:
+```bash
+yarn install
+yarn build  # Compiles src/ → dist/
 ```
 
 ### Parse and Render
@@ -41,17 +177,14 @@ const escposData = Buffer.from([
   ...Buffer.from('RECEIPT'),
   0x1B, 0x45, 0x00,  // ESC E - Bold off
   0x0A,              // LF - Line feed
-  0x1B, 0x61, 0x01,  // ESC a - Center align
-  ...Buffer.from('Thank you!'),
-  0x0A,
   0x1D, 0x56, 0x00   // GS V - Cut paper
 ]);
 
-// Parse
+// Parse commands
 const parser = new CommandParser();
 const { commands } = parser.parse(escposData);
 
-// Render
+// Render as HTML
 const renderer = new HTMLRenderer();
 const html = renderer.render(commands);
 
@@ -59,13 +192,98 @@ const html = renderer.render(commands);
 document.getElementById('receipt').innerHTML = html;
 ```
 
-### Convert to python-escpos
+---
+
+## Spool Service (Job Management)
+
+### What is the Spool Service?
+
+A **production-ready print approval workflow** system that sits between your POS system and physical printers. Jobs are submitted, reviewed, approved/rejected, and then printed.
+
+```
+POS System → Spool Service → Approve/Reject → Printer
+              (with Dashboard)
+```
+
+### Quick Start
 
 ```bash
-# Install Python tools
-pip install python-escpos
+# 1. Install dependencies
+yarn install
 
-# Convert ESC-POS file to Python code
+# 2. Start API server (no build needed!)
+yarn server
+
+# 3. Open dashboard in browser
+open web/dashboard.html
+
+# 4. Register a printer (via API)
+curl -X POST http://127.0.0.1:3000/api/printers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Kitchen Printer",
+    "type": "physical",
+    "connectionInfo": {"host": "192.168.1.100", "port": 9100}
+  }'
+
+# 5. Submit a job
+curl -X POST http://127.0.0.1:3000/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rawData": [27, 64, 72, 101, 108, 108, 111, 10],
+    "printerId": 1
+  }'
+```
+
+### Spool Service Components
+
+| Component | Path | Build Needed? | Description |
+|-----------|------|---------------|-------------|
+| API Server | `server/api-server.js` | ❌ No | REST API + WebSocket |
+| Dashboard | `web/dashboard.html` | ❌ No | Job management UI |
+| Database | `data/spool.db` | ❌ Auto-created | SQLite database |
+| CLI Tool | `bin/escpos-send.js` | ❌ No | Send to printers |
+
+**No TypeScript build needed** - All spool service components are plain JavaScript/HTML!
+
+### Features
+
+- **Job States**: pending → approved → printing → completed
+- **Real-time Updates**: WebSocket notifications in dashboard
+- **Multi-Printer Support**: Physical (TCP/IP) and chain printing
+- **Audit Trail**: Complete job history in database
+- **RESTful API**: 17 endpoints for job/printer management
+- **Security**: Localhost-only, state validation, soft deletes
+
+### Documentation
+
+- **[docs/API.md](docs/API.md)** - Complete API reference
+- **[docs/SPOOL_USAGE.md](docs/SPOOL_USAGE.md)** - Usage guide with examples
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Technical details
+
+### Chain Printing
+
+Forward jobs through multiple spool services for multi-stage approval:
+
+```
+Dev Spool → Staging Spool → Production Spool → Physical Printer
+   ↓              ↓                ↓
+ Preview      Manager Review   Final Approval
+```
+
+---
+
+## Python Tools
+
+### Installation
+
+```bash
+pip install python-escpos
+```
+
+### Convert ESC-POS to Python
+
+```bash
 python python/escpos_cli.py convert receipt.bin -o receipt.py
 ```
 
@@ -77,296 +295,106 @@ p = Dummy()
 p.set(bold=True)
 p.text('RECEIPT\n')
 p.set(bold=False)
-p.set(align='center')
 p.text('Thank you!\n')
 p.cut()
 ```
 
-### Send to Network Printer
-
-```bash
-# Send .bin file to printer via TCP socket
-yarn escpos-send 192.168.1.100 9100 receipt.bin
-
-# Or use configured printer
-yarn escpos-send --printer netum receipt.bin
-
-# Start WebSocket bridge for browser printing
-yarn bridge
-```
-
----
-
-## Features
-
-### Core Library (TypeScript/JavaScript)
-
-✅ **Parse ESC/POS Commands**
-- Text formatting (bold, underline, sizes)
-- Alignment (left, center, right)
-- Character modes (width, height)
-- Paper control (line feed, cut)
-- 9+ command types supported
-
-✅ **Render to HTML**
-- Thermal printer styling
-- Fixed-width receipt layout
-- Visual filter for authentic look
-- Responsive design
-
-✅ **TypeScript Support**
-- Full type definitions
-- Strict type checking
-- IntelliSense support
-
-### Python Tools
-
-✅ **Bidirectional Conversion**
-- ESC-POS bytes → python-escpos code
-- python-escpos code → ESC-POS bytes
-- Semantic verification
-
-✅ **Command-Line Interface**
-- Convert files
-- Verify conversions
-- Batch processing
-
-✅ **Security**
-- AST-based code validation
-- Input size limits
-- Safe code execution
-
 ### Browser Editor
 
-✅ **In-Browser Editing**
-- Real-time preview
-- Powered by Pyodide (Python in WebAssembly)
-- Import/export ESC-POS files
-- Example templates
+Open `web/editor.html` in your browser:
+- Write python-escpos code
+- See instant preview
+- Export ESC-POS files
+- Runs entirely in browser (Pyodide)
 
-✅ **HEX Viewer**
-- Collapsible binary data inspector
-- Offset + Hex bytes + ASCII display
-- Command statistics (ESC/GS counts)
-- Toggle with keyboard shortcut
-
-✅ **Network Printing**
-- Send to printer directly from browser
-- WebSocket bridge to TCP sockets
-- Named printer configurations
-- Custom IP/port support
-
-✅ **Zero Installation**
-- Runs entirely in browser
-- No server required
-- Offline capable
-
-### CLI Tools
-
-✅ **escpos-send** (netcat replacement)
-- Send .bin files to TCP sockets
-- Named printer configurations
-- Stdin piping support
-- Comprehensive error handling
-- Exit codes for scripting
-
-✅ **printer-bridge** (WebSocket server)
-- Browser to printer communication
-- Localhost-only for security
-- JSON protocol
-- Health check endpoint
-- Auto-reconnection
+**No build needed** - Just open the HTML file!
 
 ---
 
-## Use Cases
+## CLI Tools
 
-- **Development** - Test receipt layouts without a physical printer
-- **Debugging** - Understand what ESC-POS commands do
-- **Testing** - Automated receipt testing
-- **Documentation** - Generate receipt examples
-- **Education** - Learn ESC-POS command structure
-- **Conversion** - Convert between binary and readable code
-
----
-
-## Supported Commands
-
-| Command | Hex | Description | Status |
-|---------|-----|-------------|--------|
-| **Text Formatting** |
-| ESC @ | 1B 40 | Initialize printer | ✅ |
-| ESC E | 1B 45 n | Bold on/off | ✅ |
-| ESC - | 1B 2D n | Underline on/off | ✅ |
-| ESC ! | 1B 21 n | Print mode | ✅ |
-| GS ! | 1D 21 n | Character size | ✅ |
-| **Alignment** |
-| ESC a | 1B 61 n | Text alignment | ✅ |
-| **Paper Control** |
-| LF | 0A | Line feed | ✅ |
-| GS V | 1D 56 m | Paper cut | ✅ |
-| **Graphics** |
-| ESC * | 1B 2A ... | Bit image | ⏳ Planned |
-| GS v 0 | 1D 76 30 ... | Raster image | ⏳ Planned |
-| **Barcodes & QR** |
-| GS k | 1D 6B ... | Barcode | ⏳ Planned |
-| GS ( k | 1D 28 6B ... | QR code | ⏳ Planned |
-
-**Legend:** ✅ Supported | ⏳ Planned | ❌ Not yet
-
----
-
-## Installation
-
-### TypeScript/JavaScript
+### escpos-send - Send to Network Printer
 
 ```bash
-# With Yarn
-yarn add esc-pos-preview-tools
-
-# With npm
-npm install esc-pos-preview-tools
-```
-
-### Python Tools
-
-```bash
-# Install python-escpos
-pip install python-escpos
-
-# Clone repository for tools
-git clone https://github.com/cobyhausrath/esc-pos-preview-tools.git
-cd esc-pos-preview-tools/python
-```
-
----
-
-## Documentation
-
-- **[QUICKSTART.md](QUICKSTART.md)** - Get started in 5 minutes
-- **[CLAUDE.md](CLAUDE.md)** - Developer notes and conventions
-- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Current status and roadmap
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[docs/](docs/)** - Detailed technical docs
-
----
-
-## Examples
-
-### Simple Text
-
-```typescript
-import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
-
-const data = Buffer.from([
-  0x1B, 0x40,  // Initialize
-  ...Buffer.from('Hello World\n'),
-  0x1D, 0x56, 0x00  // Cut
-]);
-
-const parser = new CommandParser();
-const renderer = new HTMLRenderer();
-const html = renderer.render(parser.parse(data).commands);
-```
-
-### Formatted Receipt
-
-```typescript
-const data = Buffer.from([
-  0x1B, 0x40,        // Initialize
-  0x1B, 0x61, 0x01,  // Center align
-  0x1B, 0x45, 0x01,  // Bold on
-  0x1D, 0x21, 0x11,  // Double size
-  ...Buffer.from('MY STORE\n'),
-  0x1D, 0x21, 0x00,  // Normal size
-  0x1B, 0x45, 0x00,  // Bold off
-  0x1B, 0x61, 0x00,  // Left align
-  ...Buffer.from('Item 1: $10.00\n'),
-  ...Buffer.from('Item 2: $5.99\n'),
-  0x1B, 0x61, 0x01,  // Center
-  ...Buffer.from('Thank you!\n'),
-  0x1D, 0x56, 0x00   // Cut
-]);
-```
-
-### Browser Usage
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <script type="module">
-    import { CommandParser, HTMLRenderer } from 'https://unpkg.com/esc-pos-preview-tools';
-
-    // Your ESC-POS data here
-    const data = new Uint8Array([0x1B, 0x40, ...]);
-
-    const parser = new CommandParser();
-    const renderer = new HTMLRenderer();
-    const html = renderer.render(parser.parse(data).commands);
-
-    document.getElementById('receipt').innerHTML = html;
-  </script>
-</head>
-<body>
-  <div id="receipt"></div>
-</body>
-</html>
-```
-
----
-
-## CLI Examples
-
-### Network Printing Tools
-
-```bash
-# Send receipt to printer via TCP socket
+# Send file to printer
 yarn escpos-send 192.168.1.100 9100 receipt.bin
-
-# Use configured printer
-yarn escpos-send --printer netum receipt.bin
-
-# List available printers
-yarn escpos-send --list-printers
 
 # Pipe from stdin
 cat receipt.bin | yarn escpos-send 192.168.1.100 9100
+```
 
-# Start WebSocket bridge server
+### printer-bridge - WebSocket Bridge
+
+```bash
+# Start WebSocket to TCP bridge
 yarn bridge
 
-# Start bridge on custom port
-yarn bridge --port 9000
+# Allows browser to send to printers via WebSocket
 ```
 
-### Python Conversion Tools
+**No build needed** - Both are plain Node.js scripts!
 
-```bash
-# Convert ESC-POS to Python code
-python python/escpos_cli.py convert receipt.bin -o receipt.py
+---
 
-# Verify conversion
-python python/escpos_cli.py verify receipt.bin -c receipt.py
+## Project Structure
 
-# Convert and verify
-python python/escpos_cli.py convert receipt.bin --verify
-
-# Verbose output
-python python/escpos_cli.py convert receipt.bin --verbose
+```
+esc-pos-preview-tools/
+├── src/                    # 📦 TypeScript library (NEEDS BUILD)
+│   ├── parser/            # ESC-POS parser
+│   ├── renderer/          # HTML renderer
+│   └── index.ts           # Entry point
+│
+├── dist/                   # ✅ Built library (yarn build)
+│
+├── server/                 # 🖥️ Spool service (NO BUILD)
+│   ├── api-server.js      # Main server
+│   ├── db/                # Database setup
+│   └── repositories/      # Data access
+│
+├── web/                    # 🌐 Web interfaces (NO BUILD)
+│   ├── dashboard.html     # Job management
+│   └── editor.html        # Python editor
+│
+├── bin/                    # 🔧 CLI tools (NO BUILD)
+│   ├── escpos-send.js     # Send to printer
+│   └── printer-bridge.js  # WebSocket bridge
+│
+├── python/                 # 🐍 Python tools (NO BUILD)
+│   ├── escpos_cli.py      # CLI tool
+│   └── escpos_verifier.py # Conversion
+│
+├── samples/                # Sample .bin files
+├── docs/                   # Documentation
+└── test/                   # Test suite
 ```
 
-### Combined Workflows
+---
+
+## When to Build
+
+### You NEED to build if:
+- ✅ Using library via npm package (builds automatically)
+- ✅ Developing library features in `src/`
+- ✅ Creating GitHub Pages demos
+
+### You DON'T need to build if:
+- ❌ Running spool service (`yarn server`)
+- ❌ Using web dashboard (`web/dashboard.html`)
+- ❌ Using CLI tools (`bin/*.js`)
+- ❌ Using Python tools (`python/*.py`)
+- ❌ Opening browser editor (`web/editor.html`)
+
+### Build Commands
 
 ```bash
-# Convert Python to ESC-POS and send to printer
-python python/escpos_cli.py execute receipt.py | yarn escpos-send --printer netum
+# Build library (TypeScript → JavaScript)
+yarn build          # One-time build
+yarn dev            # Watch mode for development
 
-# Edit in browser, export, and print
-# 1. Open web/editor.html
-# 2. Click Export to save receipt.bin
-# 3. Send to printer:
-yarn escpos-send --printer netum receipt.bin
+# Build IS required for:
+npm publish         # Publishing to npm
+yarn demo:build     # GitHub Pages demos
 ```
 
 ---
@@ -380,144 +408,137 @@ cd esc-pos-preview-tools
 
 # Install dependencies
 yarn install
-pip install python-escpos pytest
 
 # Run tests
-yarn test:run
-cd python && python test_escpos_verifier.py
+yarn test:run                        # TypeScript tests
+cd python && pytest -v               # Python tests
+node server/test-db.js               # Database tests
 
-# Build
-yarn build
-
-# Generate previews
-yarn preview
-# Open test-output/index.html
-```
-
-See **[QUICKSTART.md](QUICKSTART.md)** for complete development guide.
-
----
-
-## Project Structure
-
-```
-esc-pos-preview-tools/
-├── src/                    # TypeScript library
-│   ├── parser/            # ESC-POS command parser
-│   ├── renderer/          # HTML renderer
-│   └── index.ts           # Main entry
-├── bin/                    # CLI tools
-│   ├── escpos-send.js     # Send .bin to TCP socket (nc replacement)
-│   ├── printer-bridge.js  # WebSocket to TCP bridge server
-│   └── README.md          # CLI documentation
-├── python/                 # Python tools
-│   ├── escpos_verifier.py # Verification system
-│   ├── escpos_cli.py      # Command-line tool
-│   └── escpos_constants.py # ESC-POS constants
-├── web/                    # Browser editor
-│   └── editor.html        # Pyodide-powered editor (with HEX view)
-├── samples/                # Sample ESC-POS files
-│   ├── minimal.bin
-│   ├── formatting.bin
-│   └── receipt.bin
-├── docs/                   # Documentation
-└── test/                   # Test suite
+# Development workflows
+yarn dev                             # Build library in watch mode
+yarn server:dev                      # Run spool server with auto-reload
+yarn bridge:dev                      # Run bridge with auto-reload
 ```
 
 ---
 
-## Roadmap
+## Supported ESC-POS Commands
 
-### ✅ Phase 1: Foundation (Complete)
-- Parser for basic text commands
-- HTML renderer with thermal styling
-- Test suite
-- Sample files
-
-### ✅ Phase 2: Python Tools (Complete)
-- Bidirectional ESC-POS ↔ python-escpos
-- CLI tool
-- Browser editor with Pyodide
-- Security validation
-
-### 🚧 Phase 3: Graphics (In Progress)
-- Image rendering (ESC *, GS v)
-- Barcode support (GS k)
-- QR code support (GS ( k)
-- Logo preview
-
-### ⏳ Phase 4: Advanced Features (Planned)
-- Complete command coverage
-- Character encoding (code pages)
-- International character sets
-- More export formats (PDF, PNG)
-
-### 💭 Future Vision
-- Passthrough proxy server (intercept print jobs)
-- Print approval workflow
-- Job queue management
-- REST API
-
-See **[PROJECT_STATUS.md](PROJECT_STATUS.md)** for detailed roadmap.
-
----
-
-## Browser Editor Demo
-
-Try the live editor at: **[GitHub Pages Demo](https://cobyhausrath.github.io/esc-pos-preview-tools/)**
-
-Features:
-- Write python-escpos code
-- See instant preview
-- Import/export ESC-POS files
-- Example templates
-- Runs entirely in browser
-
----
-
-## Contributing
-
-Contributions welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-Areas where help is needed:
-- Graphics/image rendering (high priority)
-- Barcode and QR code support
-- Additional ESC-POS commands
-- Test coverage
-- Documentation
+| Command | Hex | Description | Status |
+|---------|-----|-------------|--------|
+| ESC @ | 1B 40 | Initialize printer | ✅ |
+| ESC E | 1B 45 n | Bold on/off | ✅ |
+| ESC - | 1B 2D n | Underline | ✅ |
+| ESC ! | 1B 21 n | Print mode | ✅ |
+| ESC a | 1B 61 n | Alignment | ✅ |
+| GS ! | 1D 21 n | Character size | ✅ |
+| LF | 0A | Line feed | ✅ |
+| GS V | 1D 56 m | Paper cut | ✅ |
+| ESC * | 1B 2A | Bit image | ⏳ Planned |
+| GS k | 1D 6B | Barcode | ⏳ Planned |
+| GS ( k | 1D 28 6B | QR code | ⏳ Planned |
 
 ---
 
 ## Testing
 
-### TypeScript Tests
-
 ```bash
+# TypeScript library tests
 yarn test           # Watch mode
 yarn test:run       # Run once
 yarn test:coverage  # With coverage
+
+# Python tests
+cd python && pytest -v
+
+# Database/API tests
+node server/test-db.js
 ```
 
-16 tests covering:
-- Command parsing
-- HTML rendering
-- Edge cases
-- Error handling
+**Test Coverage:**
+- 18 TypeScript tests (parser, renderer)
+- 18 Python tests (conversion, security)
+- Database integration tests
 
-### Python Tests
+---
 
-```bash
-cd python
-python test_escpos_verifier.py
-# or
-pytest test_escpos_verifier.py -v
-```
+## Documentation
 
-18 tests covering:
-- ESC-POS parsing
-- Python code generation
-- Bidirectional conversion
-- Security validation
+### Getting Started
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute guide
+
+### Spool Service (New!)
+- **[docs/API.md](docs/API.md)** - REST API reference
+- **[docs/SPOOL_USAGE.md](docs/SPOOL_USAGE.md)** - Usage guide
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Implementation details
+
+### Development
+- **[CLAUDE.md](CLAUDE.md)** - Developer notes and conventions
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to contribute
+- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Current status
+
+---
+
+## Roadmap
+
+### ✅ Phase 1: Library (Complete)
+- TypeScript parser and HTML renderer
+- 18 passing tests
+- npm package published
+
+### ✅ Phase 2: Python Tools (Complete)
+- Bidirectional ESC-POS ↔ python-escpos
+- Browser editor with Pyodide
+- CLI tool with verification
+
+### ✅ Phase 3: Spool Service (Complete) ⭐ NEW
+- Job approval workflow
+- Web dashboard with real-time updates
+- REST API with 17 endpoints
+- SQLite database and repositories
+- Chain printing support
+
+### 🚧 Phase 4: Graphics (Next)
+- Image rendering
+- Barcode support
+- QR code support
+
+### ⏳ Phase 5: Advanced Features
+- Authentication and multi-user
+- Job modification/templates
+- USB printer support
+- Production deployment tools
+
+---
+
+## FAQ
+
+**Q: Do I need to build anything to use the spool service?**
+A: No! Just run `yarn server` and open `web/dashboard.html`. The spool service uses plain JavaScript.
+
+**Q: When do I need to build?**
+A: Only if you're using the library in `src/` or publishing to npm. The spool service, CLI tools, and Python tools work without building.
+
+**Q: Can this print to an actual printer?**
+A: Yes! The spool service (`yarn server`) and CLI tool (`escpos-send`) can send to network printers via TCP/IP.
+
+**Q: Is the browser editor safe?**
+A: Yes. Pyodide runs in a WebAssembly sandbox with validated Python code execution.
+
+**Q: What's the difference between the library and spool service?**
+A: **Library** (TypeScript) parses and renders ESC-POS for preview. **Spool Service** (Node.js) manages production print jobs with approval workflow.
+
+---
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**High-priority areas:**
+- Graphics/image rendering
+- Barcode and QR code support
+- Spool service enhancements
+- Documentation improvements
 
 ---
 
@@ -527,41 +548,11 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## Acknowledgments
-
-- **python-escpos** - Python ESC-POS library
-- **Pyodide** - Python in WebAssembly
-- **ESC-POS specification** - Epson, Star Micronics, and others
-
----
-
-## FAQ
-
-**Q: Can this print to an actual printer?**
-A: Not directly. This library parses and previews ESC-POS commands. To print, send the ESC-POS bytes to a thermal printer via USB, network, or bluetooth using another library.
-
-**Q: Does it support all ESC-POS commands?**
-A: Not yet. We support basic text formatting and paper control. Graphics, barcodes, and QR codes are planned next.
-
-**Q: Can I use this in a web browser?**
-A: Yes! The library works in browsers. The browser editor uses Pyodide to run python-escpos client-side.
-
-**Q: Is the browser editor safe?**
-A: Yes. Pyodide runs in a WebAssembly sandbox with no file system or network access. Python code is validated before execution.
-
-**Q: What about the proxy server mentioned in old docs?**
-A: That's a future vision, not currently implemented. The focus is on making the parser/renderer excellent first.
-
-**Q: How do I add support for a new command?**
-A: See [CLAUDE.md](CLAUDE.md) section "Adding New ESC-POS Commands" for step-by-step guide.
-
----
-
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/cobyhausrath/esc-pos-preview-tools/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/cobyhausrath/esc-pos-preview-tools/discussions)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/cobyhausrath/esc-pos-preview-tools/issues)
 - **Documentation**: See `docs/` directory
+- **Discussions**: [GitHub Discussions](https://github.com/cobyhausrath/esc-pos-preview-tools/discussions)
 
 ---
 

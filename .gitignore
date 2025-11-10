@@ -58,3 +58,9 @@ pnpm-lock.yaml
 # Optional
 .cache/
 __pycache__/
+
+# Database
+data/
+*.db
+*.db-wal
+*.db-shm
