@@ -24,9 +24,14 @@
   },
   "files": [
     "dist",
+    "bin",
     "README.md",
     "LICENSE"
   ],
+  "bin": {
+    "escpos-send": "./bin/escpos-send.js",
+    "printer-bridge": "./bin/printer-bridge.js"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -43,7 +48,9 @@
     "feedback": "bash scripts/dev-feedback.sh",
     "prepublishOnly": "yarn build && yarn test run",
     "start": "node dist/index.js",
-    "start:dev": "tsup --watch & node --watch dist/index.js"
+    "start:dev": "tsup --watch & node --watch dist/index.js",
+    "bridge": "node bin/printer-bridge.js",
+    "bridge:dev": "node --watch bin/printer-bridge.js"
   },
   "keywords": [
     "esc-pos",

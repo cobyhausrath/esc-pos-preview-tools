@@ -177,6 +177,63 @@ When adding support for new ESC-POS commands:
 - Use `logger.error()` for failures
 - Always append to `self.warnings` list for user-facing warnings
 
+### 6. Network Printing Architecture
+- **Browser → Bridge → Printer** flow for web printing
+- CLI tools (bin/) are Node.js, not TypeScript (for simplicity)
+- WebSocket bridge binds to 127.0.0.1 only (security)
+- Never expose bridge server to internet/untrusted networks
+- Printer configurations in both JS (bin/) and TS (src/devices/printers.ts)
+
+### 7. HEX View Display
+- Always use HexFormatter class for binary data display
+- Format: offset (8 hex) + 16 bytes + ASCII representation
+- Statistics show ESC/GS command counts for debugging
+- HEX view is collapsible to save screen space
+
+## Architecture: Python vs TypeScript Boundaries
+
+**IMPORTANT**: Clear separation of responsibilities (added 2025-11-10)
+
+### Python (Pyodide in Browser)
+**Responsibility**: Execute python-escpos code ONLY
+- ✅ Running python-escpos library to generate ESC-POS bytes
+- ✅ AST-based validation of user code
+- ❌ **NOT** ESC-POS parsing (use TypeScript parser)
+- ❌ **NOT** UI rendering (use TypeScript/HTML)
+- ❌ **NOT** I/O operations (use TypeScript/Node.js)
+
+**Rationale**: Pyodide has overhead. Use only when python-escpos library is required.
+
+### TypeScript/JavaScript
+**Responsibility**: Everything else
+- ✅ ESC-POS command parsing (src/parser/CommandParser.ts)
+- ✅ HTML receipt rendering (src/renderer/HTMLRenderer.ts)
+- ✅ HEX view formatting (web/editor.html HexFormatter class)
+- ✅ Network I/O - socket communication (bin/escpos-send.js, bin/printer-bridge.js)
+- ✅ UI interactions, state management, file operations
+- ✅ Browser editor application logic
+
+**Rationale**: TypeScript is faster, type-safe, better for UI/I/O. Use existing parser.
+
+### CLI Tools (Node.js)
+**Location**: `bin/` directory
+
+**Tools**:
+1. **escpos-send.js** - Send .bin files to TCP sockets (nc replacement)
+2. **printer-bridge.js** - WebSocket to TCP bridge for browser printing
+
+**Responsibilities**:
+- ✅ Network communication (TCP sockets, WebSocket)
+- ✅ CLI argument parsing and validation
+- ✅ File I/O and stdin piping
+- ✅ Printer configuration management
+
+**Why Node.js and not TypeScript?**
+- Simpler deployment (no build step for CLI tools)
+- Direct access to Node.js networking APIs
+- Self-contained executables via shebang
+- Users can modify without recompiling
+
 ## PR Review Checklist
 
 Before submitting a PR, verify:
