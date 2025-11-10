@@ -127,10 +127,10 @@ export default function Editor() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
+    reader.onload = () => {
       // TODO: Convert ESC-POS bytes back to python-escpos code
-      console.log('Imported bytes:', bytes);
+      // This feature is incomplete - needs ESC-POS to python-escpos converter
+      // When implemented, read bytes with: new Uint8Array(e.target?.result as ArrayBuffer)
     };
     reader.readAsArrayBuffer(file);
   };

@@ -55,7 +55,6 @@ export function usePyodide() {
         const errorMessage = err instanceof Error ? err.message : 'Failed to initialize Pyodide';
         setError(errorMessage);
         setIsLoading(false);
-        console.error('Pyodide initialization error:', err);
       }
     };
 
@@ -68,33 +67,45 @@ export function usePyodide() {
         throw new Error('Pyodide is not initialized');
       }
 
-      try {
-        // Validate code (basic AST check)
-        const isValid = await pyodide.runPythonAsync(`
-          import ast
-          try:
-              tree = ast.parse(${JSON.stringify(code)})
-              # Check for dangerous operations
-              for node in ast.walk(tree):
-                  if isinstance(node, ast.Import):
-                      for alias in node.names:
-                          if not alias.name.startswith('escpos'):
-                              raise ValueError(f'Only escpos imports allowed, got: {alias.name}')
-                  elif isinstance(node, ast.ImportFrom):
-                      if node.module and not node.module.startswith('escpos'):
-                          raise ValueError(f'Only escpos imports allowed, got: {node.module}')
-              True
-          except Exception as e:
-              print(f'Validation error: {e}')
-              False
-        `);
+      // Create timeout wrapper
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Code execution timeout (10s limit)')), 10000);
+      });
 
-        if (!isValid) {
+      try {
+        // Validate code (basic AST check) with timeout
+        const validationResult = await Promise.race([
+          pyodide.runPythonAsync(`
+import ast
+
+def validate_code(code_str):
+    try:
+        tree = ast.parse(code_str)
+        # Check for dangerous operations
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if not alias.name.startswith('escpos'):
+                        return False
+            elif isinstance(node, ast.ImportFrom):
+                if node.module and not node.module.startswith('escpos'):
+                    return False
+        return True
+    except Exception:
+        return False
+
+validate_code(${JSON.stringify(code)})
+          `),
+          timeoutPromise,
+        ]);
+
+        if (!validationResult) {
           throw new Error('Code validation failed: Only escpos imports are allowed');
         }
 
-        // Execute the code
-        await pyodide.runPythonAsync(`
+        // Execute the code with timeout
+        await Promise.race([
+          pyodide.runPythonAsync(`
 from escpos.printer import Dummy
 
 # Create a dummy printer
@@ -105,7 +116,9 @@ ${code}
 
 # Get the output
 output = p.output
-        `);
+          `),
+          timeoutPromise,
+        ]);
 
         // Get the output bytes
         const output = pyodide.globals.get('output') as Uint8Array;
