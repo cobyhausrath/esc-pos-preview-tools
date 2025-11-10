@@ -46,7 +46,7 @@ p.cut()
         return `# To-Do List
 p.set(align='center', bold=True, double_width=True)
 p.text('TO-DO\\n')
-p.set(align='left')
+p.set(align='left', bold=False, double_width=False)
 p.text('\\n')
 ${todoList}
 p.text('\\n')
@@ -56,7 +56,7 @@ p.cut()
       return `# To-Do List Template
 p.set(align='center', bold=True, double_width=True)
 p.text('TO-DO\\n')
-p.set(align='left')
+p.set(align='left', bold=False, double_width=False)
 p.text('\\n')
 p.text('1. First task\\n')
 p.text('2. Second task\\n')
