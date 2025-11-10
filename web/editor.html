@@ -1277,6 +1277,24 @@ p.text('--------------------------------\\\\n')
                     const micropip = this.pyodide.pyimport("micropip");
                     await micropip.install("python-escpos");
 
+                    this.updateStatus('loading', 'Loading ESC-POS verifier...');
+
+                    // Load escpos_constants.py and escpos_verifier.py
+                    try {
+                        const constantsResponse = await fetch('/python/escpos_constants.py');
+                        const constantsCode = await constantsResponse.text();
+                        await this.pyodide.runPythonAsync(constantsCode);
+
+                        const verifierResponse = await fetch('/python/escpos_verifier.py');
+                        const verifierCode = await verifierResponse.text();
+                        await this.pyodide.runPythonAsync(verifierCode);
+
+                        console.log('ESC-POS verifier loaded successfully');
+                    } catch (error) {
+                        console.error('Failed to load verifier:', error);
+                        // Continue anyway - verifier is optional for basic functionality
+                    }
+
                     this.updateStatus('success', 'Ready!');
                     this.isReady = true;
 
@@ -2025,16 +2043,61 @@ p.cut(mode='FULL')
 
             async importFile(file) {
                 try {
+                    this.updateStatus('loading', 'Importing file...');
+
                     const arrayBuffer = await file.arrayBuffer();
                     const bytes = new Uint8Array(arrayBuffer);
 
-                    // For now, just display the raw bytes
-                    // In future, use the verifier to convert to Python
-                    this.renderPreview(bytes);
-                    this.updateStatus('success', `Imported ${bytes.length} bytes`);
+                    // Convert bytes to Python code using the verifier
+                    this.updateStatus('loading', 'Converting to python-escpos...');
+
+                    try {
+                        const pythonCode = await this.pyodide.runPythonAsync(`
+from escpos_verifier import EscPosVerifier
+
+# Create verifier instance
+verifier = EscPosVerifier()
+
+# Convert bytes to python-escpos code
+escpos_bytes = bytes(${JSON.stringify(Array.from(bytes))})
+python_code = verifier.bytes_to_python_escpos(escpos_bytes)
+
+# Clean up the generated code for editor display
+# Remove the escpos_output line at the end (not needed for user editing)
+lines = python_code.split('\\n')
+# Find where to cut off (before "# Get the generated ESC-POS bytes")
+cutoff = len(lines)
+for i, line in enumerate(lines):
+    if '# Get the generated ESC-POS bytes' in line:
+        cutoff = i
+        break
+
+# Join relevant lines
+python_code = '\\n'.join(lines[:cutoff]).strip()
+python_code
+                        `);
+
+                        // Update editor with generated code
+                        document.getElementById('editor').value = pythonCode;
+
+                        // Run the code to show preview
+                        await this.runCode();
+
+                        this.updateStatus('success', `✓ Imported ${bytes.length} bytes`);
+
+                    } catch (verifierError) {
+                        console.error('Verifier failed, showing preview only:', verifierError);
+
+                        // Fallback: Just show the preview without generating code
+                        this.renderPreview(bytes);
+                        this.updateHexView(bytes);
+
+                        this.updateStatus('error', 'Could not convert to code, showing preview only');
+                    }
 
                 } catch (error) {
                     this.updateStatus('error', `Import failed: ${error.message}`);
+                    console.error('Import error:', error);
                 }
             }
 
