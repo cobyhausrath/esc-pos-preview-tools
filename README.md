@@ -14,6 +14,8 @@ A TypeScript library and Python toolkit for working with ESC/POS thermal printer
 2. **Renderer** - Display receipts as HTML with thermal printer styling
 3. **Python Bridge** - Convert between ESC/POS bytes and python-escpos code
 4. **Browser Editor** - Edit receipts with live preview (powered by Pyodide)
+5. **HEX Viewer** - Inspect binary ESC/POS data with offset/bytes/ASCII display
+6. **Network Printing** - Send receipts to network printers via CLI or browser
 
 ---
 
@@ -80,6 +82,19 @@ p.text('Thank you!\n')
 p.cut()
 ```
 
+### Send to Network Printer
+
+```bash
+# Send .bin file to printer via TCP socket
+yarn escpos-send 192.168.1.100 9100 receipt.bin
+
+# Or use configured printer
+yarn escpos-send --printer netum receipt.bin
+
+# Start WebSocket bridge for browser printing
+yarn bridge
+```
+
 ---
 
 ## Features
@@ -129,10 +144,38 @@ p.cut()
 - Import/export ESC-POS files
 - Example templates
 
+✅ **HEX Viewer**
+- Collapsible binary data inspector
+- Offset + Hex bytes + ASCII display
+- Command statistics (ESC/GS counts)
+- Toggle with keyboard shortcut
+
+✅ **Network Printing**
+- Send to printer directly from browser
+- WebSocket bridge to TCP sockets
+- Named printer configurations
+- Custom IP/port support
+
 ✅ **Zero Installation**
 - Runs entirely in browser
 - No server required
 - Offline capable
+
+### CLI Tools
+
+✅ **escpos-send** (netcat replacement)
+- Send .bin files to TCP sockets
+- Named printer configurations
+- Stdin piping support
+- Comprehensive error handling
+- Exit codes for scripting
+
+✅ **printer-bridge** (WebSocket server)
+- Browser to printer communication
+- Localhost-only for security
+- JSON protocol
+- Health check endpoint
+- Auto-reconnection
 
 ---
 
@@ -273,7 +316,31 @@ const data = Buffer.from([
 
 ---
 
-## Python CLI Examples
+## CLI Examples
+
+### Network Printing Tools
+
+```bash
+# Send receipt to printer via TCP socket
+yarn escpos-send 192.168.1.100 9100 receipt.bin
+
+# Use configured printer
+yarn escpos-send --printer netum receipt.bin
+
+# List available printers
+yarn escpos-send --list-printers
+
+# Pipe from stdin
+cat receipt.bin | yarn escpos-send 192.168.1.100 9100
+
+# Start WebSocket bridge server
+yarn bridge
+
+# Start bridge on custom port
+yarn bridge --port 9000
+```
+
+### Python Conversion Tools
 
 ```bash
 # Convert ESC-POS to Python code
@@ -287,6 +354,19 @@ python python/escpos_cli.py convert receipt.bin --verify
 
 # Verbose output
 python python/escpos_cli.py convert receipt.bin --verbose
+```
+
+### Combined Workflows
+
+```bash
+# Convert Python to ESC-POS and send to printer
+python python/escpos_cli.py execute receipt.py | yarn escpos-send --printer netum
+
+# Edit in browser, export, and print
+# 1. Open web/editor.html
+# 2. Click Export to save receipt.bin
+# 3. Send to printer:
+yarn escpos-send --printer netum receipt.bin
 ```
 
 ---
@@ -326,12 +406,16 @@ esc-pos-preview-tools/
 │   ├── parser/            # ESC-POS command parser
 │   ├── renderer/          # HTML renderer
 │   └── index.ts           # Main entry
+├── bin/                    # CLI tools
+│   ├── escpos-send.js     # Send .bin to TCP socket (nc replacement)
+│   ├── printer-bridge.js  # WebSocket to TCP bridge server
+│   └── README.md          # CLI documentation
 ├── python/                 # Python tools
 │   ├── escpos_verifier.py # Verification system
 │   ├── escpos_cli.py      # Command-line tool
 │   └── escpos_constants.py # ESC-POS constants
 ├── web/                    # Browser editor
-│   └── editor.html        # Pyodide-powered editor
+│   └── editor.html        # Pyodide-powered editor (with HEX view)
 ├── samples/                # Sample ESC-POS files
 │   ├── minimal.bin
 │   ├── formatting.bin
