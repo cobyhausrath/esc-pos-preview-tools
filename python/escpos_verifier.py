@@ -356,16 +356,32 @@ class EscPosVerifier:
             # Check for dangerous operations
             dangerous_ops = []
 
+            # Allowed import prefixes (more permissive)
+            allowed_import_prefixes = ['escpos']
+            # Allowed standard library imports for python-escpos code
+            allowed_stdlib_imports = ['io', 'sys', 'typing', 'dataclasses', 'logging', 'ast']
+
             for node in ast.walk(tree):
                 # Check for dangerous imports
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        if alias.name not in ['escpos.printer', 'escpos']:
+                        # Check if it's an allowed module
+                        is_allowed = (
+                            alias.name in allowed_stdlib_imports or
+                            any(alias.name.startswith(prefix) for prefix in allowed_import_prefixes)
+                        )
+                        if not is_allowed:
                             dangerous_ops.append(f"Import not allowed: {alias.name}")
 
                 elif isinstance(node, ast.ImportFrom):
-                    if node.module and not node.module.startswith('escpos'):
-                        dangerous_ops.append(f"Import from not allowed: {node.module}")
+                    if node.module:
+                        # Check if it's an allowed module
+                        is_allowed = (
+                            node.module in allowed_stdlib_imports or
+                            any(node.module.startswith(prefix) for prefix in allowed_import_prefixes)
+                        )
+                        if not is_allowed:
+                            dangerous_ops.append(f"Import from not allowed: {node.module}")
 
                 # Check for file operations
                 elif isinstance(node, ast.Call):
