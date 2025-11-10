@@ -166,8 +166,13 @@ output = p.output
           timeoutPromise,
         ]);
 
-        // Get the output bytes
-        const output = pyodide.globals.get('output') as Uint8Array;
+        // Get the output bytes and convert from Python bytes to Uint8Array
+        const outputPy = pyodide.globals.get('output');
+
+        // Convert Python bytes object to JavaScript Uint8Array
+        const outputList = outputPy.toJs();
+        const output = new Uint8Array(outputList);
+
         return output;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to execute code';
