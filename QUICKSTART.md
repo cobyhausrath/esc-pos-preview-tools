@@ -219,41 +219,46 @@ python -m unittest test_escpos_verifier.TestEscPosVerifier.test_bold
 
 ---
 
-## How to Run: Browser Editor
+## How to Run: React App (Dashboard & Editor)
 
-### Start Local Server
+### Start Development Server
 
 ```bash
 # From project root
-cd web
-python3 -m http.server 8000
+yarn app:dev
 ```
 
-### Open in Browser
-
-```
-http://localhost:8000/editor.html
-```
+This starts the Vite dev server at http://localhost:5173
 
 ### Features
 
+**Editor:**
 - **Live Preview**: Type python-escpos code, see instant preview
 - **Import ESC-POS**: Load .bin files and convert to Python code
 - **Export ESC-POS**: Save edited receipts as .bin files
-- **Example Templates**: Try built-in examples
-- **Runs Offline**: After initial load (Pyodide caches)
+- **Example Templates**: Built-in receipt templates
+- **HEX View**: Inspect binary data
+- **Printer Controls**: Send to network printers
+
+**Dashboard:**
+- **Job Management**: Approve/reject print jobs
+- **Real-time Updates**: WebSocket connection to spool service
+- **Job Filtering**: Filter by status
+- **Statistics**: Live job stats sidebar
 
 ### First Load
 
 **Wait 3-7 seconds** for Pyodide to load python-escpos.
-Watch the status indicator at the top.
+Watch the loading overlay at the top.
 
 ### Try It Out
 
-1. Click "Example Templates" → "Simple Receipt"
-2. Edit the Python code in the left panel
-3. Watch the preview update on the right
-4. Click "Export ESC-POS" to save as .bin file
+1. Navigate to http://localhost:5173/editor
+2. Click an example button (Simple/Formatted/Receipt)
+3. Edit the Python code in the left panel
+4. Watch the preview update on the right
+5. Click "Export .bin" to save as ESC-POS file
+6. Click "Import .bin" to convert existing files to code
 
 ---
 
@@ -300,9 +305,9 @@ git push origin main
 # You have: receipt.bin
 # You want: HTML preview
 
-# Option A: Use Python CLI + browser
+# Option A: Use Python CLI + React Editor
 python python/escpos_cli.py convert receipt.bin -o receipt.py
-# Open web/editor.html, paste code, see preview
+# Open React app (yarn app:dev), paste code in Editor, see preview
 
 # Option B: Use TypeScript (need to write code)
 node -e "
@@ -320,9 +325,9 @@ console.log(html);
 ### Workflow 2: Create New Receipt
 
 ```bash
-# Open browser editor
-cd web && python3 -m http.server 8000
-# Open http://localhost:8000/editor.html
+# Start React app
+yarn app:dev
+# Open http://localhost:5173/editor
 
 # Write python-escpos code in editor
 # See live preview
