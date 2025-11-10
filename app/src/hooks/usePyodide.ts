@@ -81,15 +81,34 @@ import ast
 def validate_code(code_str):
     try:
         tree = ast.parse(code_str)
+
+        # Allowed imports
+        allowed_import_prefixes = ['escpos']
+        allowed_stdlib_imports = ['io', 'sys', 'typing', 'dataclasses', 'logging', 'ast']
+
         # Check for dangerous operations
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if not alias.name.startswith('escpos'):
+                    is_allowed = (
+                        alias.name in allowed_stdlib_imports or
+                        any(alias.name.startswith(prefix) for prefix in allowed_import_prefixes)
+                    )
+                    if not is_allowed:
                         return False
             elif isinstance(node, ast.ImportFrom):
-                if node.module and not node.module.startswith('escpos'):
-                    return False
+                if node.module:
+                    is_allowed = (
+                        node.module in allowed_stdlib_imports or
+                        any(node.module.startswith(prefix) for prefix in allowed_import_prefixes)
+                    )
+                    if not is_allowed:
+                        return False
+            # Block dangerous function calls
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    if node.func.id in ['open', 'exec', 'eval', 'compile', '__import__']:
+                        return False
         return True
     except Exception:
         return False
@@ -100,7 +119,7 @@ validate_code(${JSON.stringify(code)})
         ]);
 
         if (!validationResult) {
-          throw new Error('Code validation failed: Only escpos imports are allowed');
+          throw new Error('Code validation failed: Dangerous operations detected');
         }
 
         // Execute the code with timeout
