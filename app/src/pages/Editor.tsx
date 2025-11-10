@@ -3,6 +3,7 @@ import { usePyodide } from '@/hooks/usePyodide';
 import { usePrinterClient } from '@/hooks/usePrinterClient';
 import { HexFormatter } from '@/utils/hexFormatter';
 import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
+import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
 import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
@@ -13,7 +14,7 @@ import type { TemplateType, ReceiptData } from '@/types';
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
 
 export default function Editor() {
-  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode } = usePyodide();
+  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode } = usePyodide();
   const printer = usePrinterClient();
 
   const [code, setCode] = useState(DEFAULT_CODE);
@@ -58,15 +59,6 @@ export default function Editor() {
     }
   }, []);
 
-  // Execute code when it changes (debounced)
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      executeCode();
-    }, 500);
-
-    return () => clearTimeout(timeout);
-  }, [code, pyodide]);
-
   const executeCode = useCallback(async () => {
     if (!pyodide || isPyodideLoading) return;
 
@@ -77,9 +69,11 @@ export default function Editor() {
       const bytes = await runCode(code);
       const { hex, stats } = HexFormatter.formatWithStats(bytes);
 
-      // TODO: Parse ESC-POS bytes to generate preview HTML
-      // For now, just show the raw text
-      const preview = new TextDecoder().decode(bytes);
+      // Parse ESC-POS bytes to generate preview HTML
+      const parser = new CommandParser();
+      const renderer = new HTMLRenderer();
+      const parseResult = parser.parse(bytes);
+      const preview = renderer.render(parseResult.commands);
 
       setReceiptData({
         code,
@@ -98,6 +92,15 @@ export default function Editor() {
       setIsExecuting(false);
     }
   }, [code, pyodide, isPyodideLoading, runCode]);
+
+  // Execute code when it changes (debounced)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      executeCode();
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [executeCode]);
 
   const handleTemplateClick = (type: TemplateType) => {
     const template = generateTemplate(type);
@@ -122,17 +125,62 @@ export default function Editor() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      // TODO: Convert ESC-POS bytes back to python-escpos code
-      // This feature is incomplete - needs ESC-POS to python-escpos converter
-      // When implemented, read bytes with: new Uint8Array(e.target?.result as ArrayBuffer)
-    };
-    reader.readAsArrayBuffer(file);
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+
+      if (import.meta.env.DEV) {
+        console.log(`Importing ${bytes.length} bytes from ${file.name}`);
+      }
+
+      // Try to convert bytes to python-escpos code
+      try {
+        const pythonCode = await convertBytesToCode(bytes);
+        if (import.meta.env.DEV) {
+          console.log(`Generated ${pythonCode.length} characters of Python code`);
+        }
+
+        // Update editor with generated code
+        setCode(pythonCode);
+
+        // The code will be executed automatically via the useEffect
+      } catch (conversionError) {
+        console.error('Conversion failed:', conversionError);
+
+        // Fallback: Show preview of raw bytes
+        const { hex, stats } = HexFormatter.formatWithStats(bytes);
+
+        // Parse and render the ESC-POS bytes for preview
+        const parser = new CommandParser();
+        const renderer = new HTMLRenderer();
+        const parseResult = parser.parse(bytes);
+        const preview = renderer.render(parseResult.commands);
+
+        setReceiptData({
+          code: code, // Keep existing code
+          escposBytes: bytes,
+          preview,
+          hexView: hex,
+          hexStats: stats,
+        });
+
+        setError('Could not convert to code. Showing preview only.');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to import file';
+      setError(errorMessage);
+    } finally {
+      setIsExecuting(false);
+      // Reset file input
+      event.target.value = '';
+    }
   };
 
   const handlePrint = async () => {

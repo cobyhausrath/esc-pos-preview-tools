@@ -49,6 +49,35 @@ export function usePyodide() {
           await micropip.install('python-escpos')
         `);
 
+        // Load ESC-POS verifier for bin-to-code conversion
+        try {
+          const constantsResponse = await fetch('/python/escpos_constants.py');
+          if (constantsResponse.ok) {
+            const constantsCode = await constantsResponse.text();
+            await pyodideInstance.runPythonAsync(constantsCode);
+
+            const verifierResponse = await fetch('/python/escpos_verifier.py');
+            if (verifierResponse.ok) {
+              const verifierCode = await verifierResponse.text();
+              await pyodideInstance.runPythonAsync(verifierCode);
+
+              // Test that verifier is available
+              await pyodideInstance.runPythonAsync(`
+from escpos_verifier import EscPosVerifier
+_test = EscPosVerifier()
+del _test
+              `);
+
+              if (import.meta.env.DEV) {
+                console.log('ESC-POS verifier loaded successfully');
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Verifier not available:', err);
+          // Continue without verifier - import will show preview only
+        }
+
         setPyodide(pyodideInstance);
         setIsLoading(false);
       } catch (err) {
@@ -81,15 +110,34 @@ import ast
 def validate_code(code_str):
     try:
         tree = ast.parse(code_str)
+
+        # Allowed imports
+        allowed_import_prefixes = ['escpos']
+        allowed_stdlib_imports = ['io', 'sys', 'typing', 'dataclasses', 'logging', 'ast']
+
         # Check for dangerous operations
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    if not alias.name.startswith('escpos'):
+                    is_allowed = (
+                        alias.name in allowed_stdlib_imports or
+                        any(alias.name.startswith(prefix) for prefix in allowed_import_prefixes)
+                    )
+                    if not is_allowed:
                         return False
             elif isinstance(node, ast.ImportFrom):
-                if node.module and not node.module.startswith('escpos'):
-                    return False
+                if node.module:
+                    is_allowed = (
+                        node.module in allowed_stdlib_imports or
+                        any(node.module.startswith(prefix) for prefix in allowed_import_prefixes)
+                    )
+                    if not is_allowed:
+                        return False
+            # Block dangerous function calls
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    if node.func.id in ['open', 'exec', 'eval', 'compile', '__import__']:
+                        return False
         return True
     except Exception:
         return False
@@ -100,7 +148,7 @@ validate_code(${JSON.stringify(code)})
         ]);
 
         if (!validationResult) {
-          throw new Error('Code validation failed: Only escpos imports are allowed');
+          throw new Error('Code validation failed: Dangerous operations detected');
         }
 
         // Execute the code with timeout
@@ -120,11 +168,66 @@ output = p.output
           timeoutPromise,
         ]);
 
-        // Get the output bytes
-        const output = pyodide.globals.get('output') as Uint8Array;
+        // Get the output bytes and convert from Python bytes to Uint8Array
+        const outputPy = pyodide.globals.get('output') as any;
+
+        // Convert Python bytes object to JavaScript Uint8Array
+        const outputList = outputPy.toJs() as number[];
+        const output = new Uint8Array(outputList);
+
         return output;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to execute code';
+        throw new Error(errorMessage);
+      }
+    },
+    [pyodide]
+  );
+
+  const convertBytesToCode = useCallback(
+    async (bytes: Uint8Array): Promise<string> => {
+      if (!pyodide) {
+        throw new Error('Pyodide is not initialized');
+      }
+
+      try {
+        const bytesArray = Array.from(bytes);
+
+        const pythonCode = await pyodide.runPythonAsync(`
+from escpos_verifier import EscPosVerifier
+import logging
+
+# Disable logging to keep console clean
+logging.getLogger('escpos_verifier').setLevel(logging.ERROR)
+
+# Create verifier instance
+verifier = EscPosVerifier()
+
+# Convert bytes to python-escpos code
+escpos_bytes = bytes([${bytesArray.join(', ')}])
+python_code = verifier.bytes_to_python_escpos(escpos_bytes)
+
+# Clean up the generated code for editor display
+# Remove the escpos_output line at the end (not needed for user editing)
+lines = python_code.split('\\n')
+
+# Find where to cut off (before "# Get the generated ESC-POS bytes")
+cutoff = len(lines)
+for i, line in enumerate(lines):
+    if '# Get the generated ESC-POS bytes' in line or line.strip() == '':
+        cutoff = i
+        break
+
+# Join relevant lines and clean up
+python_code = '\\n'.join(lines[:cutoff]).strip()
+
+# Return the cleaned code
+python_code
+        `);
+
+        return pythonCode as string;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to convert bytes to code';
         throw new Error(errorMessage);
       }
     },
@@ -136,5 +239,6 @@ output = p.output
     isLoading,
     error,
     runCode,
+    convertBytesToCode,
   };
 }

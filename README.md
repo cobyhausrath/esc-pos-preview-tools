@@ -32,19 +32,28 @@ flowchart TB
 
     subgraph "🖥️ SPOOL SERVICE (Node.js - No Build)"
         SERVER["server/api-server.js\n(Job Management API)"]
-        DASHBOARD["web/dashboard.html\n(Job Approval UI)"]
         CLI1["bin/escpos-send.js\n(Send to Printer)"]
         CLI2["bin/printer-bridge.js\n(WebSocket Bridge)"]
         DB["SQLite Database\n(Jobs, Printers)"]
 
-        DASHBOARD -.WebSocket.-> SERVER
         SERVER --> DB
         SERVER --> CLI1
     end
 
+    subgraph "⚛️ REACT APP (Vite - Needs Build)"
+        REACTAPP["app/src/\n(React v19 + TypeScript)"]
+        DASHBOARD["Dashboard\n(Job Approval UI)"]
+        EDITOR["Editor\n(Pyodide + Import)"]
+        REACTBUILD["yarn app:build"]
+
+        REACTAPP --> REACTBUILD
+        REACTBUILD --> DASHBOARD
+        REACTBUILD --> EDITOR
+        DASHBOARD -.WebSocket.-> SERVER
+    end
+
     subgraph "🐍 PYTHON TOOLS (No Build)"
         PYTOOLS["python/escpos_cli.py\n(Conversion Tools)"]
-        EDITOR["web/editor.html\n(Pyodide Editor)"]
         EDITOR -.imports.-> PYTOOLS
     end
 
@@ -109,11 +118,13 @@ git clone https://github.com/cobyhausrath/esc-pos-preview-tools.git
 cd esc-pos-preview-tools
 yarn install
 
-# Start spool service (no build needed!)
+# Start spool service
 yarn server
 
-# Open dashboard
-open web/dashboard.html
+# In another terminal, start React app
+yarn app:dev
+
+# Open http://localhost:5173 to access Dashboard and Editor
 ```
 
 See [📖 Spool Service Documentation](#spool-service-job-management) below.

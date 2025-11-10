@@ -18,6 +18,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      'esc-pos-preview-tools': path.resolve(__dirname, '../src'),
     },
   },
   server: {

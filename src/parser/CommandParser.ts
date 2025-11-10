@@ -5,7 +5,7 @@
 import { Command, ParseResult } from './types';
 
 export class CommandParser {
-  parse(buffer: Buffer): ParseResult {
+  parse(buffer: Buffer | Uint8Array): ParseResult {
     const commands: Command[] = [];
     let pos = 0;
 
@@ -124,11 +124,13 @@ export class CommandParser {
         ) {
           pos++;
         }
-        const text = buffer.subarray(textStart, pos).toString('ascii');
+        // Use String.fromCharCode for browser compatibility (Uint8Array doesn't have .toString('ascii'))
+        const textBytes = buffer.subarray(textStart, pos);
+        const text = String.fromCharCode(...Array.from(textBytes));
         commands.push({
           type: 'text',
           value: text,
-          raw: Array.from(buffer.subarray(textStart, pos)),
+          raw: Array.from(textBytes),
         });
       } else {
         // Unknown byte

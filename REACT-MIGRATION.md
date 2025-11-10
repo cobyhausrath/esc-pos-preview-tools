@@ -4,7 +4,9 @@ This document describes the migration from the HTML-based dashboard and editor t
 
 ## Overview
 
-The original `web/dashboard.html` and `web/editor.html` files have been converted to a modern React application with:
+**IMPORTANT: As of 2025-11-10, the HTML files have been REMOVED and replaced with the React app.**
+
+The original `web/dashboard.html` and `web/editor.html` files were converted to a modern React application with:
 
 - **TypeScript** with strict type checking
 - **React v19** with functional components and hooks
