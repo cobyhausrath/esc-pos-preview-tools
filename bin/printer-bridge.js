@@ -218,29 +218,39 @@ function parseStatusByte(statusByte, queryType) {
 
     switch (queryType) {
         case 1: // Printer status (DLE EOT 1)
+            // Bit 2: Drawer status
             status.drawerOpen = !!(statusByte & 0x04);
+            // Bit 3: Online/offline (0=online, 1=offline)
             status.online = !(statusByte & 0x08);
-            status.coverOpen = !!(statusByte & 0x20);
-            status.paperFeedButton = !!(statusByte & 0x40);
-            status.error = !!(statusByte & 0x40);
+            // Bit 5: Wait for on-line recover
+            status.waitingForRecovery = !!(statusByte & 0x20);
             break;
 
-        case 2: // Offline status (DLE EOT 2)
+        case 2: // Off-line status (DLE EOT 2)
+            // Bit 2: Top cover (0=close, 1=open)
             status.coverOpen = !!(statusByte & 0x04);
+            // Bit 3: Paper feed button (0=not pressed, 1=pressed)
             status.paperFeedButton = !!(statusByte & 0x08);
-            status.paperEnd = !!(statusByte & 0x20);
+            // Bit 5: Paper shortage (0=no shortage, 1=shortage/low)
+            status.paperShortage = !!(statusByte & 0x20);
+            // Bit 6: Error flag (0=no error, 1=error)
             status.error = !!(statusByte & 0x40);
             break;
 
         case 3: // Error status (DLE EOT 3)
+            // Bit 3: Auto-cutter error
             status.cutterError = !!(statusByte & 0x08);
+            // Bit 5: Unrecoverable error
             status.unrecoverableError = !!(statusByte & 0x20);
-            status.autoRecoverableError = !!(statusByte & 0x40);
+            // Bit 6: Temperature/voltage over range
+            status.temperatureError = !!(statusByte & 0x40);
             break;
 
-        case 4: // Paper sensor status (DLE EOT 4)
-            status.paperNearEnd = !!(statusByte & 0x0C);
-            status.paperEnd = !!(statusByte & 0x60);
+        case 4: // Paper roll sensor status (DLE EOT 4)
+            // Bits 2-3: Paper near-end sensor (0x0C = 12 = paper near end)
+            status.paperNearEnd = (statusByte & 0x0C) === 0x0C;
+            // Bits 5-6: Paper present sensor (0x60 = 96 = paper not present)
+            status.paperNotPresent = (statusByte & 0x60) === 0x60;
             break;
     }
 
@@ -326,34 +336,46 @@ function queryPrinterStatus(host, port) {
                 const parsed = parseStatusByte(response.byte, response.type);
                 Object.assign(combinedStatus.details, parsed);
 
-                // Update high-level status
-                if (response.type === 1 || response.type === 2) {
+                // Update high-level status based on response type
+                if (response.type === 1) {
+                    // Printer status
                     if (parsed.online === false) {
                         combinedStatus.online = false;
                         combinedStatus.error = true;
                         combinedStatus.errorMessage = 'Printer offline';
                     }
+                }
+
+                if (response.type === 2) {
+                    // Off-line status
                     if (parsed.coverOpen) {
                         combinedStatus.coverOpen = true;
                         combinedStatus.error = true;
                         combinedStatus.errorMessage = 'Cover open';
                     }
-                    if (parsed.paperEnd) {
-                        combinedStatus.paperStatus = 'out';
+                    if (parsed.paperShortage) {
+                        combinedStatus.paperStatus = 'low';
+                        // Paper shortage is a warning, not always an error
+                    }
+                    if (parsed.error && !combinedStatus.errorMessage) {
                         combinedStatus.error = true;
-                        combinedStatus.errorMessage = 'Paper out';
+                        combinedStatus.errorMessage = 'Printer error';
                     }
                 }
 
                 if (response.type === 4) {
-                    if (parsed.paperEnd) {
+                    // Paper roll sensor status
+                    if (parsed.paperNotPresent) {
                         combinedStatus.paperStatus = 'out';
                         combinedStatus.error = true;
                         if (!combinedStatus.errorMessage) {
                             combinedStatus.errorMessage = 'Paper out';
                         }
                     } else if (parsed.paperNearEnd) {
-                        combinedStatus.paperStatus = 'low';
+                        // Only set to low if not already set to out
+                        if (combinedStatus.paperStatus !== 'out') {
+                            combinedStatus.paperStatus = 'low';
+                        }
                     }
                 }
             });
