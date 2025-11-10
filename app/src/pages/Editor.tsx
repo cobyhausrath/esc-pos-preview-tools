@@ -13,7 +13,7 @@ import type { TemplateType, ReceiptData } from '@/types';
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
 
 export default function Editor() {
-  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode } = usePyodide();
+  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode } = usePyodide();
   const printer = usePrinterClient();
 
   const [code, setCode] = useState(DEFAULT_CODE);
@@ -65,7 +65,7 @@ export default function Editor() {
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [code, pyodide]);
+  }, [code, pyodide, convertBytesToCode]);
 
   const executeCode = useCallback(async () => {
     if (!pyodide || isPyodideLoading) return;
@@ -122,17 +122,53 @@ export default function Editor() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      // TODO: Convert ESC-POS bytes back to python-escpos code
-      // This feature is incomplete - needs ESC-POS to python-escpos converter
-      // When implemented, read bytes with: new Uint8Array(e.target?.result as ArrayBuffer)
-    };
-    reader.readAsArrayBuffer(file);
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      const arrayBuffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+
+      console.log(`Importing ${bytes.length} bytes from ${file.name}`);
+
+      // Try to convert bytes to python-escpos code
+      try {
+        const pythonCode = await convertBytesToCode(bytes);
+        console.log(`Generated ${pythonCode.length} characters of Python code`);
+
+        // Update editor with generated code
+        setCode(pythonCode);
+
+        // The code will be executed automatically via the useEffect
+      } catch (conversionError) {
+        console.error('Conversion failed:', conversionError);
+
+        // Fallback: Show preview of raw bytes
+        const { hex, stats } = HexFormatter.formatWithStats(bytes);
+        const preview = new TextDecoder().decode(bytes);
+
+        setReceiptData({
+          code: code, // Keep existing code
+          escposBytes: bytes,
+          preview,
+          hexView: hex,
+          hexStats: stats,
+        });
+
+        setError('Could not convert to code. Showing preview only.');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to import file';
+      setError(errorMessage);
+    } finally {
+      setIsExecuting(false);
+      // Reset file input
+      event.target.value = '';
+    }
   };
 
   const handlePrint = async () => {

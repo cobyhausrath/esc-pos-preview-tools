@@ -49,6 +49,33 @@ export function usePyodide() {
           await micropip.install('python-escpos')
         `);
 
+        // Load ESC-POS verifier for bin-to-code conversion
+        try {
+          const constantsResponse = await fetch('/python/escpos_constants.py');
+          if (constantsResponse.ok) {
+            const constantsCode = await constantsResponse.text();
+            await pyodideInstance.runPythonAsync(constantsCode);
+
+            const verifierResponse = await fetch('/python/escpos_verifier.py');
+            if (verifierResponse.ok) {
+              const verifierCode = await verifierResponse.text();
+              await pyodideInstance.runPythonAsync(verifierCode);
+
+              // Test that verifier is available
+              await pyodideInstance.runPythonAsync(`
+from escpos_verifier import EscPosVerifier
+_test = EscPosVerifier()
+del _test
+              `);
+
+              console.log('ESC-POS verifier loaded successfully');
+            }
+          }
+        } catch (err) {
+          console.warn('Verifier not available:', err);
+          // Continue without verifier - import will show preview only
+        }
+
         setPyodide(pyodideInstance);
         setIsLoading(false);
       } catch (err) {
@@ -150,10 +177,61 @@ output = p.output
     [pyodide]
   );
 
+  const convertBytesToCode = useCallback(
+    async (bytes: Uint8Array): Promise<string> => {
+      if (!pyodide) {
+        throw new Error('Pyodide is not initialized');
+      }
+
+      try {
+        const bytesArray = Array.from(bytes);
+
+        const pythonCode = await pyodide.runPythonAsync(`
+from escpos_verifier import EscPosVerifier
+import logging
+
+# Disable logging to keep console clean
+logging.getLogger('escpos_verifier').setLevel(logging.ERROR)
+
+# Create verifier instance
+verifier = EscPosVerifier()
+
+# Convert bytes to python-escpos code
+escpos_bytes = bytes([${bytesArray.join(', ')}])
+python_code = verifier.bytes_to_python_escpos(escpos_bytes)
+
+# Clean up the generated code for editor display
+# Remove the escpos_output line at the end (not needed for user editing)
+lines = python_code.split('\\n')
+
+# Find where to cut off (before "# Get the generated ESC-POS bytes")
+cutoff = len(lines)
+for i, line in enumerate(lines):
+    if '# Get the generated ESC-POS bytes' in line or line.strip() == '':
+        cutoff = i
+        break
+
+# Join relevant lines and clean up
+python_code = '\\n'.join(lines[:cutoff]).strip()
+
+# Return the cleaned code
+python_code
+        `);
+
+        return pythonCode as string;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to convert bytes to code';
+        throw new Error(errorMessage);
+      }
+    },
+    [pyodide]
+  );
+
   return {
     pyodide,
     isLoading,
     error,
     runCode,
+    convertBytesToCode,
   };
 }
