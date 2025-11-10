@@ -52,7 +52,11 @@
     "bridge": "node bin/printer-bridge.js",
     "bridge:dev": "node --watch bin/printer-bridge.js",
     "server": "node server/api-server.js",
-    "server:dev": "node --watch server/api-server.js"
+    "server:dev": "node --watch server/api-server.js",
+    "app:dev": "vite --config app/vite.config.ts",
+    "app:build": "tsc -p app/tsconfig.json && vite build --config app/vite.config.ts",
+    "app:preview": "vite preview --config app/vite.config.ts",
+    "app:typecheck": "tsc -p app/tsconfig.json --noEmit"
   },
   "keywords": [
     "esc-pos",
@@ -86,21 +90,30 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.46.3",
+    "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^1.0.0",
     "eslint": "^9.39.1",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
     "prettier": "^3.0.0",
     "tsup": "^8.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.0.0",
+    "vite": "^5.4.11",
     "vitest": "^1.0.0"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
     "express": "^4.18.2",
     "iconv-lite": "^0.6.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^6.28.0",
     "ws": "^8.16.0"
   },
   "peerDependencies": {},
