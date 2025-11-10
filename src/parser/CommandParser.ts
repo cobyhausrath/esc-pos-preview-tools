@@ -5,7 +5,7 @@
 import { Command, ParseResult } from './types';
 
 export class CommandParser {
-  parse(buffer: Buffer): ParseResult {
+  parse(buffer: Buffer | Uint8Array): ParseResult {
     const commands: Command[] = [];
     let pos = 0;
 

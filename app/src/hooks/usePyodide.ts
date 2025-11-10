@@ -68,7 +68,9 @@ _test = EscPosVerifier()
 del _test
               `);
 
-              console.log('ESC-POS verifier loaded successfully');
+              if (import.meta.env.DEV) {
+                console.log('ESC-POS verifier loaded successfully');
+              }
             }
           }
         } catch (err) {
@@ -167,10 +169,10 @@ output = p.output
         ]);
 
         // Get the output bytes and convert from Python bytes to Uint8Array
-        const outputPy = pyodide.globals.get('output');
+        const outputPy = pyodide.globals.get('output') as any;
 
         // Convert Python bytes object to JavaScript Uint8Array
-        const outputList = outputPy.toJs();
+        const outputList = outputPy.toJs() as number[];
         const output = new Uint8Array(outputList);
 
         return output;

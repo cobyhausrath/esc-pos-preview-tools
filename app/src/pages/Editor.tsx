@@ -59,15 +59,6 @@ export default function Editor() {
     }
   }, []);
 
-  // Execute code when it changes (debounced)
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      executeCode();
-    }, 500);
-
-    return () => clearTimeout(timeout);
-  }, [code, pyodide, convertBytesToCode]);
-
   const executeCode = useCallback(async () => {
     if (!pyodide || isPyodideLoading) return;
 
@@ -101,6 +92,15 @@ export default function Editor() {
       setIsExecuting(false);
     }
   }, [code, pyodide, isPyodideLoading, runCode]);
+
+  // Execute code when it changes (debounced)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      executeCode();
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [executeCode]);
 
   const handleTemplateClick = (type: TemplateType) => {
     const template = generateTemplate(type);
@@ -136,12 +136,16 @@ export default function Editor() {
       const arrayBuffer = await file.arrayBuffer();
       const bytes = new Uint8Array(arrayBuffer);
 
-      console.log(`Importing ${bytes.length} bytes from ${file.name}`);
+      if (import.meta.env.DEV) {
+        console.log(`Importing ${bytes.length} bytes from ${file.name}`);
+      }
 
       // Try to convert bytes to python-escpos code
       try {
         const pythonCode = await convertBytesToCode(bytes);
-        console.log(`Generated ${pythonCode.length} characters of Python code`);
+        if (import.meta.env.DEV) {
+          console.log(`Generated ${pythonCode.length} characters of Python code`);
+        }
 
         // Update editor with generated code
         setCode(pythonCode);

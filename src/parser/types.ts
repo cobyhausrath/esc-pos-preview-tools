@@ -21,6 +21,6 @@ export interface Command {
 
 export interface ParseResult {
   commands: Command[];
-  rawBytes: Buffer;
+  rawBytes: Buffer | Uint8Array;
   bytesProcessed: number;
 }
