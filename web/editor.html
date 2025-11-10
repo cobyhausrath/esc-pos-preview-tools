@@ -242,6 +242,134 @@
             background: #3e3e3e;
             margin: 0 4px;
         }
+
+        /* HEX View Panel */
+        .hex-panel {
+            background: #1e1e1e;
+            border-bottom: 1px solid #3e3e3e;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .hex-panel.visible {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .hex-content {
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #d4d4d4;
+            white-space: pre;
+        }
+
+        .hex-header {
+            padding: 12px 16px;
+            background: #2d2d30;
+            border-bottom: 1px solid #3e3e3e;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hex-header h4 {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: #cccccc;
+        }
+
+        .hex-stats {
+            font-size: 12px;
+            color: #858585;
+        }
+
+        .hex-offset {
+            color: #858585;
+        }
+
+        .hex-bytes {
+            color: #4ec9b0;
+        }
+
+        .hex-ascii {
+            color: #ce9178;
+        }
+
+        button.toggle {
+            background: transparent;
+            border: 1px solid #3e3e3e;
+        }
+
+        button.toggle:hover:not(:disabled) {
+            background: #3e3e3e;
+            border-color: #4e4e4e;
+        }
+
+        button.toggle.active {
+            background: #3e3e3e;
+            border-color: #007acc;
+        }
+
+        /* Printer Controls */
+        .printer-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        select {
+            padding: 8px 12px;
+            border: 1px solid #3e3e3e;
+            border-radius: 4px;
+            background: #2d2d30;
+            color: #d4d4d4;
+            cursor: pointer;
+            font-size: 13px;
+            outline: none;
+        }
+
+        select:hover {
+            border-color: #4e4e4e;
+        }
+
+        select:focus {
+            border-color: #007acc;
+        }
+
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: #858585;
+        }
+
+        .connection-status.connected {
+            color: #0d7c2d;
+        }
+
+        .connection-status.disconnected {
+            color: #c5221f;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #858585;
+        }
+
+        .status-dot.connected {
+            background: #0d7c2d;
+        }
+
+        .status-dot.disconnected {
+            background: #c5221f;
+        }
     </style>
 </head>
 <body>
@@ -260,6 +388,26 @@
                 <button id="share-btn" class="secondary" title="Copy shareable link to clipboard">
                     🔗 Share
                 </button>
+                <button id="hex-toggle-btn" class="toggle" title="Toggle HEX view">
+                    🔍 HEX
+                </button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="printer-controls">
+                <select id="printer-select">
+                    <option value="">Select printer...</option>
+                    <option value="netum">Netum 80-V-UL</option>
+                    <option value="custom">Custom IP...</option>
+                </select>
+                <button id="print-btn" class="secondary" title="Send to printer" disabled>
+                    🖨️ Print
+                </button>
+                <span class="connection-status disconnected" id="connection-status">
+                    <span class="status-dot disconnected"></span>
+                    Disconnected
+                </span>
             </div>
 
             <div class="divider"></div>
@@ -281,6 +429,18 @@
     </div>
 
     <div class="preview-pane">
+        <!-- HEX View Panel (Collapsible) -->
+        <div id="hex-panel" class="hex-panel">
+            <div class="hex-header">
+                <h4>HEX View</h4>
+                <span class="hex-stats" id="hex-stats">0 bytes</span>
+            </div>
+            <div class="hex-content" id="hex-content">
+                No data
+            </div>
+        </div>
+
+        <!-- Receipt Preview -->
         <div class="preview-header">
             <h3>Receipt Preview (Live)</h3>
         </div>
@@ -297,6 +457,233 @@
 
     <script type="module">
         // ===================================================================
+        // Printer Client - WebSocket client for printer bridge
+        // ===================================================================
+
+        class PrinterClient {
+            constructor(bridgeUrl = 'ws://127.0.0.1:8765') {
+                this.bridgeUrl = bridgeUrl;
+                this.ws = null;
+                this.connected = false;
+                this.printers = {};
+                this.onStatusChange = null;
+            }
+
+            /**
+             * Connect to printer bridge server
+             * @returns {Promise<void>}
+             */
+            connect() {
+                return new Promise((resolve, reject) => {
+                    try {
+                        this.ws = new WebSocket(this.bridgeUrl);
+
+                        this.ws.onopen = () => {
+                            console.log('Connected to printer bridge');
+                            this.connected = true;
+                            this.updateStatus('connected');
+                        };
+
+                        this.ws.onmessage = (event) => {
+                            try {
+                                const message = JSON.parse(event.data);
+                                console.log('Bridge message:', message);
+
+                                if (message.printers) {
+                                    this.printers = message.printers;
+                                }
+
+                                if (message.success !== undefined) {
+                                    // Response to a request
+                                    if (this.onResponse) {
+                                        this.onResponse(message);
+                                    }
+                                }
+                            } catch (err) {
+                                console.error('Failed to parse bridge message:', err);
+                            }
+                        };
+
+                        this.ws.onclose = () => {
+                            console.log('Disconnected from printer bridge');
+                            this.connected = false;
+                            this.updateStatus('disconnected');
+                        };
+
+                        this.ws.onerror = (error) => {
+                            console.error('WebSocket error:', error);
+                            this.connected = false;
+                            this.updateStatus('disconnected');
+                            reject(new Error('Failed to connect to printer bridge'));
+                        };
+
+                        // Wait for connection
+                        const checkConnection = setInterval(() => {
+                            if (this.connected) {
+                                clearInterval(checkConnection);
+                                resolve();
+                            }
+                        }, 100);
+
+                        setTimeout(() => {
+                            clearInterval(checkConnection);
+                            if (!this.connected) {
+                                reject(new Error('Connection timeout'));
+                            }
+                        }, 5000);
+
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            }
+
+            /**
+             * Disconnect from bridge
+             */
+            disconnect() {
+                if (this.ws) {
+                    this.ws.close();
+                    this.ws = null;
+                }
+                this.connected = false;
+                this.updateStatus('disconnected');
+            }
+
+            /**
+             * Send data to printer
+             * @param {string} printerName - Printer name or 'custom'
+             * @param {Uint8Array} data - Binary data to send
+             * @param {string} customHost - Custom host (if printerName is 'custom')
+             * @param {number} customPort - Custom port (if printerName is 'custom')
+             * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+             */
+            sendToPrinter(printerName, data, customHost = null, customPort = null) {
+                return new Promise((resolve, reject) => {
+                    if (!this.connected) {
+                        reject(new Error('Not connected to bridge'));
+                        return;
+                    }
+
+                    const request = {
+                        action: 'send',
+                        data: Array.from(data)
+                    };
+
+                    if (printerName === 'custom') {
+                        request.host = customHost;
+                        request.port = customPort;
+                    } else {
+                        request.printer = printerName;
+                    }
+
+                    // Set response handler
+                    this.onResponse = (message) => {
+                        this.onResponse = null;
+                        if (message.success) {
+                            resolve(message);
+                        } else {
+                            reject(new Error(message.error || 'Unknown error'));
+                        }
+                    };
+
+                    // Send request
+                    this.ws.send(JSON.stringify(request));
+
+                    // Timeout after 10 seconds
+                    setTimeout(() => {
+                        if (this.onResponse) {
+                            this.onResponse = null;
+                            reject(new Error('Request timeout'));
+                        }
+                    }, 10000);
+                });
+            }
+
+            /**
+             * Update connection status UI
+             * @param {string} status - 'connected' or 'disconnected'
+             */
+            updateStatus(status) {
+                if (this.onStatusChange) {
+                    this.onStatusChange(status);
+                }
+            }
+        }
+
+        // ===================================================================
+        // HEX Formatter - Display binary data as hex dump
+        // ===================================================================
+
+        class HexFormatter {
+            /**
+             * Format bytes as hex dump with offset, hex bytes, and ASCII
+             * @param {Uint8Array} bytes - Binary data to format
+             * @param {number} bytesPerLine - Bytes per line (default: 16)
+             * @returns {string} Formatted hex dump
+             */
+            format(bytes, bytesPerLine = 16) {
+                if (!bytes || bytes.length === 0) {
+                    return 'No data';
+                }
+
+                let output = '';
+                for (let i = 0; i < bytes.length; i += bytesPerLine) {
+                    // Offset (8 hex digits)
+                    const offset = i.toString(16).toUpperCase().padStart(8, '0');
+                    output += `<span class="hex-offset">${offset}:</span> `;
+
+                    // Hex bytes
+                    const lineBytes = bytes.slice(i, i + bytesPerLine);
+                    const hexPart = [];
+                    for (let j = 0; j < bytesPerLine; j++) {
+                        if (j < lineBytes.length) {
+                            hexPart.push(lineBytes[j].toString(16).toUpperCase().padStart(2, '0'));
+                        } else {
+                            hexPart.push('  ');
+                        }
+                    }
+                    output += `<span class="hex-bytes">${hexPart.join(' ')}</span>  `;
+
+                    // ASCII representation
+                    output += '| <span class="hex-ascii">';
+                    for (let j = 0; j < lineBytes.length; j++) {
+                        const byte = lineBytes[j];
+                        // Printable ASCII or dot
+                        const char = (byte >= 0x20 && byte <= 0x7E)
+                            ? String.fromCharCode(byte)
+                            : '.';
+                        output += char;
+                    }
+                    output += '</span>\n';
+                }
+
+                return output;
+            }
+
+            /**
+             * Get summary stats about the bytes
+             * @param {Uint8Array} bytes - Binary data
+             * @returns {string} Summary string
+             */
+            getStats(bytes) {
+                if (!bytes || bytes.length === 0) {
+                    return '0 bytes';
+                }
+
+                // Count command bytes (ESC, GS, etc.)
+                let escCount = 0;
+                let gsCount = 0;
+                for (let i = 0; i < bytes.length; i++) {
+                    if (bytes[i] === 0x1B) escCount++;
+                    if (bytes[i] === 0x1D) gsCount++;
+                }
+
+                return `${bytes.length} bytes (ESC: ${escCount}, GS: ${gsCount})`;
+            }
+        }
+
+        // ===================================================================
         // Receipt Editor - Main Application
         // ===================================================================
 
@@ -305,6 +692,16 @@
                 this.pyodide = null;
                 this.debounceTimer = null;
                 this.isReady = false;
+                this.hexFormatter = new HexFormatter();
+                this.hexVisible = false;
+                this.printerClient = new PrinterClient();
+                this.currentBytes = null; // Store last generated bytes
+                this.selectedPrinter = '';
+
+                // Setup printer client status callback
+                this.printerClient.onStatusChange = (status) => {
+                    this.updateConnectionStatus(status);
+                };
             }
 
             /**
@@ -482,15 +879,136 @@ result
                     console.log('runCode: Bytes length:', escposBytes.length);
                     console.log('runCode: First 20 bytes:', Array.from(escposBytes.slice(0, 20)));
 
+                    // Store bytes for printing
+                    this.currentBytes = escposBytes;
+
+                    // Update HEX view
+                    this.updateHexView(escposBytes);
+
                     // Render preview
                     this.renderPreview(escposBytes);
 
                     this.updateStatus('success', `✓ Success (${escposBytes.length} bytes)`);
 
+                    // Update print button state
+                    this.updateConnectionStatus(this.printerClient.connected ? 'connected' : 'disconnected');
+
                 } catch (error) {
                     this.updateStatus('error', `✗ Error`);
                     this.showError(error.message);
                     console.error('runCode error:', error);
+                }
+            }
+
+            /**
+             * Update the HEX view panel with new bytes
+             * @param {Uint8Array} bytes - Binary data to display
+             */
+            updateHexView(bytes) {
+                const hexContent = document.getElementById('hex-content');
+                const hexStats = document.getElementById('hex-stats');
+
+                hexContent.innerHTML = this.hexFormatter.format(bytes);
+                hexStats.textContent = this.hexFormatter.getStats(bytes);
+            }
+
+            /**
+             * Toggle HEX view visibility
+             */
+            toggleHexView() {
+                this.hexVisible = !this.hexVisible;
+                const hexPanel = document.getElementById('hex-panel');
+                const hexToggleBtn = document.getElementById('hex-toggle-btn');
+
+                if (this.hexVisible) {
+                    hexPanel.classList.add('visible');
+                    hexToggleBtn.classList.add('active');
+                } else {
+                    hexPanel.classList.remove('visible');
+                    hexToggleBtn.classList.remove('active');
+                }
+            }
+
+            /**
+             * Connect to printer bridge
+             */
+            async connectToBridge() {
+                try {
+                    await this.printerClient.connect();
+                    console.log('Connected to printer bridge');
+                    return true;
+                } catch (error) {
+                    console.error('Failed to connect to bridge:', error);
+                    return false;
+                }
+            }
+
+            /**
+             * Update connection status UI
+             * @param {string} status - 'connected' or 'disconnected'
+             */
+            updateConnectionStatus(status) {
+                const statusEl = document.getElementById('connection-status');
+                const statusDot = statusEl.querySelector('.status-dot');
+                const printBtn = document.getElementById('print-btn');
+
+                statusEl.className = `connection-status ${status}`;
+                statusDot.className = `status-dot ${status}`;
+                statusEl.innerHTML = `
+                    <span class="status-dot ${status}"></span>
+                    ${status === 'connected' ? 'Connected' : 'Disconnected'}
+                `;
+
+                // Enable/disable print button based on connection and bytes available
+                printBtn.disabled = !(status === 'connected' && this.currentBytes && this.currentBytes.length > 0);
+            }
+
+            /**
+             * Send current bytes to printer
+             */
+            async sendToPrinter() {
+                if (!this.currentBytes || this.currentBytes.length === 0) {
+                    alert('No data to print. Run the code first.');
+                    return;
+                }
+
+                if (!this.printerClient.connected) {
+                    alert('Not connected to printer bridge. Make sure printer-bridge is running.');
+                    return;
+                }
+
+                const printerSelect = document.getElementById('printer-select');
+                const printerName = printerSelect.value;
+
+                if (!printerName) {
+                    alert('Please select a printer first.');
+                    return;
+                }
+
+                try {
+                    this.updateStatus('loading', 'Sending to printer...');
+
+                    if (printerName === 'custom') {
+                        const host = prompt('Enter printer IP address:', '192.168.1.100');
+                        if (!host) return;
+
+                        const portStr = prompt('Enter printer port:', '9100');
+                        const port = parseInt(portStr, 10);
+                        if (isNaN(port)) {
+                            alert('Invalid port number');
+                            return;
+                        }
+
+                        const result = await this.printerClient.sendToPrinter('custom', this.currentBytes, host, port);
+                        this.updateStatus('success', `✓ Printed ${result.bytesSent} bytes`);
+                    } else {
+                        const result = await this.printerClient.sendToPrinter(printerName, this.currentBytes);
+                        this.updateStatus('success', `✓ Printed ${result.bytesSent} bytes`);
+                    }
+
+                } catch (error) {
+                    this.updateStatus('error', `Print failed: ${error.message}`);
+                    alert(`Print failed: ${error.message}`);
                 }
             }
 
@@ -844,6 +1362,9 @@ list(p.output)
             const importBtn = document.getElementById('import-btn');
             const exportBtn = document.getElementById('export-btn');
             const shareBtn = document.getElementById('share-btn');
+            const hexToggleBtn = document.getElementById('hex-toggle-btn');
+            const printBtn = document.getElementById('print-btn');
+            const printerSelect = document.getElementById('printer-select');
             const fileInput = document.getElementById('file-input');
 
             // Disable buttons until ready
@@ -851,6 +1372,7 @@ list(p.output)
             importBtn.disabled = true;
             exportBtn.disabled = true;
             shareBtn.disabled = true;
+            printBtn.disabled = true;
 
             // Run button
             runBtn.addEventListener('click', () => editor.runCode());
@@ -891,6 +1413,17 @@ list(p.output)
             // Share button
             shareBtn.addEventListener('click', () => editor.shareCode());
 
+            // HEX toggle button
+            hexToggleBtn.addEventListener('click', () => editor.toggleHexView());
+
+            // Print button
+            printBtn.addEventListener('click', () => editor.sendToPrinter());
+
+            // Printer select
+            printerSelect.addEventListener('change', (e) => {
+                editor.selectedPrinter = e.target.value;
+            });
+
             // Example buttons
             document.getElementById('example-simple').addEventListener('click', () => editor.loadExample('simple'));
             document.getElementById('example-formatted').addEventListener('click', () => editor.loadExample('formatted'));
@@ -898,6 +1431,16 @@ list(p.output)
 
             // Initialize editor (this will enable buttons when ready)
             await editor.init();
+
+            // Try to connect to printer bridge (optional)
+            // This will fail silently if bridge is not running
+            setTimeout(async () => {
+                try {
+                    await editor.connectToBridge();
+                } catch (error) {
+                    console.log('Printer bridge not available (this is okay)');
+                }
+            }, 1000);
 
             // Expose for debugging
             window.receiptEditor = editor;
