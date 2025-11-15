@@ -76,7 +76,9 @@ export class CodeModifier {
     if (typeof value === 'boolean') {
       formattedValue = value ? 'True' : 'False';
     } else if (typeof value === 'string') {
-      formattedValue = `'${value}'`;
+      // Escape backslashes and single quotes to prevent Python syntax errors
+      const escaped = value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      formattedValue = `'${escaped}'`;
     } else {
       formattedValue = value.toString();
     }
