@@ -905,3 +905,97 @@ body {
     gap: 1rem;
   }
 }
+
+/* Context Menu for Receipt Preview */
+.context-menu {
+  position: fixed;
+  background: #2d2d30;
+  border: 1px solid #3e3e3e;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  min-width: 250px;
+  z-index: 10000;
+  font-size: 13px;
+  color: #d4d4d4;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.context-menu .menu-section {
+  padding: 8px 12px;
+}
+
+.context-menu .menu-section strong {
+  color: #cccccc;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.context-menu .menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.1s;
+}
+
+.context-menu .menu-item:hover {
+  background: #3e3e3e;
+}
+
+.context-menu .toggle-item {
+  display: flex;
+  justify-content: space-between;
+}
+
+.context-menu .toggle-badge {
+  font-size: 11px;
+  color: #858585;
+  background: #1e1e1e;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.context-menu .menu-divider {
+  height: 1px;
+  background: #3e3e3e;
+  margin: 4px 0;
+}
+
+.context-menu .command-item {
+  font-family: monospace;
+  font-size: 11px;
+  color: #858585;
+  padding: 4px 12px;
+  background: #1e1e1e;
+  margin: 2px 12px;
+  border-radius: 3px;
+  word-wrap: break-word;
+}
+
+/* Receipt lines should show pointer on hover to indicate interactivity */
+.receipt-line {
+  cursor: context-menu;
+  position: relative;
+  padding: 2px 0;
+  min-height: 1.2em;
+}
+
+.receipt-line:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.receipt-line.center {
+  text-align: center;
+}
+
+.receipt-line.right {
+  text-align: right;
+}
+
+.receipt-line.left {
+  text-align: left;
+}

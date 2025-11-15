@@ -109,3 +109,38 @@ export interface PrinterClientState {
 
 // Dashboard filter type
 export type DashboardFilter = 'all' | JobStatus;
+
+// Context Menu types
+export type AlignmentType = 'left' | 'center' | 'right';
+
+export interface CommandMetadata {
+  type: 'initialize' | 'alignment' | 'bold' | 'underline' | 'size' | 'cut';
+  value?: AlignmentType | boolean | number;
+  pythonCode: string;
+}
+
+export interface LineAttributes {
+  align: AlignmentType;
+  bold: boolean;
+  underline: boolean;
+}
+
+export interface LineState extends LineAttributes {
+  commands: CommandMetadata[];
+}
+
+export interface ContextMenuPosition {
+  x: number;
+  y: number;
+}
+
+export interface ContextMenuProps {
+  lineNumber: number;
+  attributes: LineAttributes;
+  commands: CommandMetadata[];
+  position: ContextMenuPosition;
+  onClose: () => void;
+  onToggleBold: (lineNumber: number, currentValue: boolean) => void;
+  onToggleUnderline: (lineNumber: number, currentValue: boolean) => void;
+  onChangeAlignment: (lineNumber: number, newAlign: AlignmentType) => void;
+}
