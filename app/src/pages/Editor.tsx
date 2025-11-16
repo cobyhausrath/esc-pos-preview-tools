@@ -263,9 +263,8 @@ export default function Editor() {
     if (!receiptData.escposBytes) return;
 
     try {
-      // Fix line spacing for images to prevent gaps
-      const processedBytes = fixImageLineSpacing(receiptData.escposBytes);
-      await printer.print(processedBytes);
+      // Send raw bytes from python-escpos - it already includes correct line spacing
+      await printer.print(receiptData.escposBytes);
     } catch (err) {
       console.error('Print failed:', err);
     }
