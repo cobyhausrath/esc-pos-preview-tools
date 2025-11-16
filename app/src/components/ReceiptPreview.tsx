@@ -529,7 +529,7 @@ export default function ReceiptPreview({
                       alt={`Image ${index}`}
                       className="receipt-image"
                       style={{
-                        display: 'block',
+                        display: 'inline-block',
                         maxWidth: '100%',
                         height: 'auto',
                         margin: 0,
