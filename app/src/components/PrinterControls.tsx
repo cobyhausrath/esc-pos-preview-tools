@@ -33,11 +33,14 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
   const [bridgeUrlInput, setBridgeUrlInput] = useState(printer.bridgeUrl);
   const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastCommandTimeRef = useRef<number>(0);
+  const hasAutoConnectedRef = useRef(false);
   const commandCooldownMs = 3000; // Don't check status for 3 seconds after any command
 
   // Auto-connect on mount
   useEffect(() => {
-    if (settings.autoConnect && settings.lastPrinterConfig && !printer.isConnected) {
+    // Use ref to prevent double-connect in React Strict Mode (dev)
+    if (!hasAutoConnectedRef.current && settings.autoConnect && settings.lastPrinterConfig && !printer.isConnected) {
+      hasAutoConnectedRef.current = true;
       const config = settings.lastPrinterConfig;
       printer.connect(config).then(() => {
         if (settings.autoCheckStatus) {
