@@ -98,6 +98,89 @@ function decodeEscPosImage(
 }
 
 /**
+ * Decode GS v 0 raster image data to a data URL for display
+ *
+ * GS v 0 format: GS v 0 m xL xH yL yH [data]
+ * - Data is organized in row-major order (left to right, top to bottom)
+ * - Each byte represents 8 horizontal pixels (bit 7 = left, bit 0 = right)
+ * - Width is in bytes, height is in dots
+ */
+function decodeRasterImage(
+  data: Uint8Array,
+  widthBytes: number,
+  heightDots: number
+): string {
+  if (import.meta.env.DEV) {
+    console.log('[Raster Decode]', {
+      dataLength: data.length,
+      widthBytes,
+      heightDots,
+      expectedBytes: widthBytes * heightDots,
+    });
+  }
+
+  const widthPixels = widthBytes * 8;
+
+  // Validate dimensions
+  if (widthBytes <= 0 || heightDots <= 0) {
+    console.error('[Raster Decode] Invalid dimensions:', { widthBytes, heightDots });
+    return '';
+  }
+
+  // Create canvas for rendering
+  const canvas = document.createElement('canvas');
+  canvas.width = widthPixels;
+  canvas.height = heightDots;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.error('[Raster Decode] Failed to get canvas context');
+    return '';
+  }
+
+  // Create image data
+  const imageData = ctx.createImageData(widthPixels, heightDots);
+  const pixels = imageData.data;
+
+  // Decode bitmap data (row-major order)
+  let dataIdx = 0;
+  for (let y = 0; y < heightDots; y++) {
+    for (let xByte = 0; xByte < widthBytes; xByte++) {
+      if (dataIdx >= data.length) break;
+
+      const byte = data[dataIdx++];
+
+      // Extract 8 horizontal pixels from this byte
+      // bit 7 (MSB) is leftmost pixel, bit 0 (LSB) is rightmost
+      for (let bit = 0; bit < 8; bit++) {
+        const x = xByte * 8 + (7 - bit);
+        if (x >= widthPixels) break;
+
+        const pixelOn = (byte & (1 << bit)) !== 0;
+        const pixelIdx = (y * widthPixels + x) * 4;
+
+        // Set pixel color (black if on, white if off)
+        pixels[pixelIdx] = pixelOn ? 0 : 255; // R
+        pixels[pixelIdx + 1] = pixelOn ? 0 : 255; // G
+        pixels[pixelIdx + 2] = pixelOn ? 0 : 255; // B
+        pixels[pixelIdx + 3] = 255; // A
+      }
+    }
+  }
+
+  // Put pixels on canvas
+  ctx.putImageData(imageData, 0, 0);
+
+  // Convert to data URL
+  const dataURL = canvas.toDataURL('image/png');
+
+  if (import.meta.env.DEV) {
+    console.log('[Raster Decode] Generated data URL length:', dataURL.length);
+  }
+
+  return dataURL;
+}
+
+/**
  * ReceiptPreview - Display formatted ESC-POS receipt with context menu support
  *
  * This component:
@@ -377,6 +460,105 @@ export default function ReceiptPreview({
             lineCount++;
             i += 3;
             continue;
+          }
+
+          // GS v 0 - Raster Image
+          if (cmd === 0x76 && i + 7 < bytes.length) {
+            const subCmd = bytes[i + 2];
+            const m = bytes[i + 3]; // mode
+            const xL = bytes[i + 4];
+            const xH = bytes[i + 5];
+            const yL = bytes[i + 6];
+            const yH = bytes[i + 7];
+            const widthBytes = xL + (xH * 256);
+            const heightDots = yL + (yH * 256);
+            const totalDataBytes = widthBytes * heightDots;
+            const totalSize = 8 + totalDataBytes;
+
+            if (import.meta.env.DEV) {
+              console.log('[GS v 0] Parsing raster image:', {
+                subCmd,
+                mode: m,
+                widthBytes,
+                heightDots,
+                totalDataBytes,
+                totalSize,
+                availableBytes: bytes.length - i,
+              });
+            }
+
+            if (i + totalSize <= bytes.length && subCmd === 0) {
+              // Extract and decode raster image data
+              const imageData = bytes.slice(i + 8, i + totalSize);
+
+              // Decode bitmap and create data URL
+              const imageDataURL = decodeRasterImage(imageData, widthBytes, heightDots);
+
+              if (import.meta.env.DEV) {
+                console.log('[GS v 0] Generated data URL:', {
+                  length: imageDataURL.length,
+                  preview: imageDataURL.substring(0, 50),
+                  isEmpty: imageDataURL === '',
+                });
+              }
+
+              // Skip if data URL generation failed
+              if (!imageDataURL) {
+                if (import.meta.env.DEV) {
+                  console.error('[GS v 0] Failed to generate data URL, skipping image');
+                }
+                i += totalSize;
+                continue;
+              }
+
+              // Flush current line if exists
+              if (currentLine) {
+                lines.push({
+                  text: currentLine,
+                  align: currentAlign,
+                  bold: currentBold,
+                  underline: currentUnderline,
+                  lineNumber: lineCount,
+                });
+                newCommandMap.set(lineCount, {
+                  align: currentAlign,
+                  bold: currentBold,
+                  underline: currentUnderline,
+                  commands: [...lineCommands],
+                });
+                lineCount++;
+                lineCommands = [];
+                currentLine = '';
+              }
+
+              // Add image as a special line with data URL
+              lines.push({
+                text: `__IMAGE__${imageDataURL}`,
+                align: currentAlign,
+                bold: false,
+                underline: false,
+                lineNumber: lineCount,
+              });
+              lineCount++;
+
+              lineCommands.push({
+                type: 'image',
+                value: m,
+                pythonCode: `p.image(img, impl='bitImageRaster')`,
+              });
+
+              i += totalSize;
+
+              // Skip line feed if immediately after image (avoid blank lines between strips)
+              if (i < bytes.length && bytes[i] === 0x0a) {
+                if (import.meta.env.DEV) {
+                  console.log('[GS v 0] Skipping LF after image to avoid gap');
+                }
+                i++;
+              }
+
+              continue;
+            }
           }
 
           i += 2;
