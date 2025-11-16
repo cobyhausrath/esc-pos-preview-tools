@@ -184,11 +184,64 @@ export default function Editor() {
     }
   };
 
+  /**
+   * Remove line feeds after ESC * image commands to prevent gaps between image strips
+   */
+  const removeImageGaps = (bytes: Uint8Array): Uint8Array => {
+    const result: number[] = [];
+    let i = 0;
+
+    while (i < bytes.length) {
+      const byte = bytes[i];
+
+      // Check for ESC * (bit image) command
+      if (byte === 0x1b && i + 1 < bytes.length && bytes[i + 1] === 0x2a) {
+        // ESC * m nL nH [data...]
+        if (i + 4 < bytes.length) {
+          const mode = bytes[i + 2];
+          const nL = bytes[i + 3];
+          const nH = bytes[i + 4];
+          const widthInPixels = nL + (nH * 256);
+
+          // Determine bytes per column based on mode
+          let dotsPerColumn = 8;
+          if (mode === 0 || mode === 1) dotsPerColumn = 8;
+          else if (mode === 32 || mode === 33) dotsPerColumn = 24;
+
+          const bytesPerColumn = dotsPerColumn / 8;
+          const totalDataBytes = widthInPixels * bytesPerColumn;
+          const totalSize = 5 + totalDataBytes;
+
+          // Copy the entire ESC * command
+          for (let j = 0; j < totalSize && i < bytes.length; j++) {
+            result.push(bytes[i++]);
+          }
+
+          // Skip line feed if it immediately follows the image data
+          if (i < bytes.length && bytes[i] === 0x0a) {
+            if (import.meta.env.DEV) {
+              console.log('[Print] Removing LF after ESC * to prevent gap');
+            }
+            i++; // Skip the LF
+          }
+          continue;
+        }
+      }
+
+      result.push(byte);
+      i++;
+    }
+
+    return new Uint8Array(result);
+  };
+
   const handlePrint = async () => {
     if (!receiptData.escposBytes) return;
 
     try {
-      await printer.print(receiptData.escposBytes);
+      // Remove gaps between image strips before printing
+      const processedBytes = removeImageGaps(receiptData.escposBytes);
+      await printer.print(processedBytes);
     } catch (err) {
       console.error('Print failed:', err);
     }
