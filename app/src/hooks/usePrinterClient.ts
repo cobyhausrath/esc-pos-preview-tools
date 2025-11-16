@@ -152,6 +152,31 @@ export function usePrinterClient() {
       }
 
       return new Promise((resolve, reject) => {
+        // Define handleMessage in the outer scope so timeout can access it
+        const handleMessage = (event: MessageEvent) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.success) {
+              clearTimeout(timeoutId);
+              setIsPrinting(false);
+              wsRef.current?.removeEventListener('message', handleMessage);
+              resolve();
+            } else if (message.success === false) {
+              clearTimeout(timeoutId);
+              setIsPrinting(false);
+              const errorMsg = message.error || 'Print failed';
+              setError(errorMsg);
+              wsRef.current?.removeEventListener('message', handleMessage);
+              reject(new Error(errorMsg));
+            }
+          } catch (err) {
+            clearTimeout(timeoutId);
+            setIsPrinting(false);
+            wsRef.current?.removeEventListener('message', handleMessage);
+            reject(err);
+          }
+        };
+
         const timeoutId = setTimeout(() => {
           setIsPrinting(false);
           setError('Print timeout - printer not responding');
@@ -162,31 +187,6 @@ export function usePrinterClient() {
         try {
           setIsPrinting(true);
           setError(null);
-
-          // Wait for confirmation
-          const handleMessage = (event: MessageEvent) => {
-            try {
-              const message = JSON.parse(event.data);
-              if (message.success) {
-                clearTimeout(timeoutId);
-                setIsPrinting(false);
-                wsRef.current?.removeEventListener('message', handleMessage);
-                resolve();
-              } else if (message.success === false) {
-                clearTimeout(timeoutId);
-                setIsPrinting(false);
-                const errorMsg = message.error || 'Print failed';
-                setError(errorMsg);
-                wsRef.current?.removeEventListener('message', handleMessage);
-                reject(new Error(errorMsg));
-              }
-            } catch (err) {
-              clearTimeout(timeoutId);
-              setIsPrinting(false);
-              wsRef.current?.removeEventListener('message', handleMessage);
-              reject(err);
-            }
-          };
 
           wsRef.current!.addEventListener('message', handleMessage);
 
