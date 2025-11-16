@@ -220,6 +220,9 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
 
         client.on('connect', () => {
             connected = true;
+            // Disable timeout after successful connection
+            // ESC-POS printers typically don't send responses, so we don't want to timeout
+            client.setTimeout(0);
             client.write(data, (err) => {
                 if (err) {
                     reject({ code: 'WRITE_ERROR', message: err.message });
