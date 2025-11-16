@@ -494,9 +494,8 @@ export default function ReceiptPreview({
               }
 
               // Validate subcommand for raster format
-              // ESC/POS spec uses ASCII '0' (0x30), but some implementations may use binary 0x00
-              // Accept both to maximize compatibility
-              if (subCmd !== 0x30 && subCmd !== 0) {
+              // ESC/POS spec: GS v '0' uses ASCII character '0' (0x30), not binary 0x00
+              if (subCmd !== 0x30) {
                 if (import.meta.env.DEV) {
                   console.warn('[GS v] Unsupported subcommand, skipping header only:', subCmd, `(0x${subCmd.toString(16)})`);
                 }
