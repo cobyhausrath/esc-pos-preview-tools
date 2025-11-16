@@ -109,6 +109,10 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
 
     try {
       setIsCheckingStatus(true);
+
+      // Mark that we're doing a status check to prevent periodic check from firing
+      lastCommandTimeRef.current = Date.now();
+
       const printerName = PRINTER_PRESETS.findIndex(p => p.name === config.name) >= 0
         ? config.name
         : 'custom';
