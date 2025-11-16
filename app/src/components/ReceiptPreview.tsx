@@ -138,6 +138,40 @@ export default function ReceiptPreview({
             continue;
           }
 
+          // ESC ! - Print mode (size, emphasis, etc.)
+          if (cmd === 0x21 && i + 2 < bytes.length) {
+            const mode = bytes[i + 2];
+            // Note: Size changes not yet supported in preview, just consume the command
+            lineCommands.push({
+              type: 'size',
+              value: mode,
+              pythonCode: `p.set(/* mode=${mode} */)`,
+            });
+            i += 3;
+            continue;
+          }
+
+          // ESC * - Bit Image
+          if (cmd === 0x2a && i + 4 < bytes.length) {
+            const mode = bytes[i + 2];
+            const nL = bytes[i + 3];
+            const nH = bytes[i + 4];
+            const dataBytes = nL + (nH * 256);
+            const totalSize = 5 + dataBytes;
+
+            if (i + totalSize <= bytes.length) {
+              // Add image placeholder to current line
+              currentLine += `[IMAGE: ${dataBytes} bytes]`;
+              lineCommands.push({
+                type: 'image',
+                value: mode,
+                pythonCode: `p.image(img, impl='bitImageColumn')`,
+              });
+              i += totalSize;
+              continue;
+            }
+          }
+
           i += 2;
           continue;
         }
