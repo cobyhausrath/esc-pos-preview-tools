@@ -530,7 +530,7 @@ export default function ReceiptPreview({
                       className="receipt-image"
                       style={{
                         display: 'block',
-                        width: '100%',
+                        maxWidth: '100%',
                         height: 'auto',
                         margin: 0,
                         verticalAlign: 'top'
