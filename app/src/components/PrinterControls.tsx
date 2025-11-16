@@ -39,27 +39,33 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
     try {
       await printer.connect(config);
       // Automatically check status after connection if enabled
+      // Pass the config directly since state might not be updated yet
       if (settings.autoCheckStatus) {
-        await handleCheckStatus();
+        await handleCheckStatus(config);
       }
     } catch (err) {
       console.error('Connection failed:', err);
     }
   };
 
-  const handleCheckStatus = async () => {
-    if (!printer.isConnected || !printer.selectedPrinter) return;
+  const handleCheckStatus = async (printerConfig?: PrinterConfig) => {
+    // Use provided config or fall back to state
+    const config = printerConfig || printer.selectedPrinter;
+
+    // If config is explicitly provided, we assume we're connected (called right after connect)
+    // Otherwise, check the connection state
+    if (!config || (!printerConfig && !printer.isConnected)) return;
 
     try {
       setIsCheckingStatus(true);
-      const printerName = PRINTER_PRESETS.findIndex(p => p.name === printer.selectedPrinter?.name) >= 0
-        ? printer.selectedPrinter.name
+      const printerName = PRINTER_PRESETS.findIndex(p => p.name === config.name) >= 0
+        ? config.name
         : 'custom';
 
       await printer.queryStatus(
         printerName,
-        printer.selectedPrinter.ip,
-        printer.selectedPrinter.port
+        config.ip,
+        config.port
       );
     } catch (err) {
       console.error('Status check failed:', err);
