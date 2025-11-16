@@ -161,8 +161,8 @@ validate_code(${JSON.stringify(code)})
           pyodide.runPythonAsync(`
 from escpos.printer import Dummy
 
-# Create a dummy printer
-p = Dummy()
+# Create a dummy printer configured for Netum 80-V-UL (203 DPI thermal printer)
+p = Dummy(profile='NT-80-V-UL')
 
 # Execute user code
 ${code}
@@ -253,8 +253,8 @@ python_code
         console.warn(`[Image] Image too large: ${width}x${height} (${pixelCount} pixels)`);
         return `from escpos.printer import Dummy
 
-# Create printer
-p = Dummy()
+# Create printer configured for Netum 80-V-UL (203 DPI thermal printer)
+p = Dummy(profile='NT-80-V-UL')
 
 # Image too large
 p.set(align='center')
@@ -292,8 +292,8 @@ await micropip.install('Pillow')
           console.warn(`[Image] Image file too large: ${sizeKB}KB`);
           return `from escpos.printer import Dummy
 
-# Create printer
-p = Dummy()
+# Create printer configured for Netum 80-V-UL (203 DPI thermal printer)
+p = Dummy(profile='NT-80-V-UL')
 
 # Image file too large
 p.set(align='center')
@@ -317,8 +317,8 @@ from PIL import Image
 import io
 import base64
 
-# Create printer
-p = Dummy()
+# Create printer configured for Netum 80-V-UL (203 DPI thermal printer)
+p = Dummy(profile='NT-80-V-UL')
 
 try:
     # Decode embedded image (${width}x${height} dithered)
@@ -349,8 +349,8 @@ finally:
         // Fallback to placeholder if conversion fails
         return `from escpos.printer import Dummy
 
-# Create printer
-p = Dummy()
+# Create printer configured for Netum 80-V-UL (203 DPI thermal printer)
+p = Dummy(profile='NT-80-V-UL')
 
 # Image encoding failed
 p.set(align='center')
