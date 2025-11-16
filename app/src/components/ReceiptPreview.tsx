@@ -312,7 +312,7 @@ export default function ReceiptPreview({
               // Add image as a special line with data URL
               lines.push({
                 text: `__IMAGE__${imageDataURL}`,
-                align: 'center',
+                align: currentAlign, // Use current alignment instead of hardcoding
                 bold: false,
                 underline: false,
                 lineNumber: lineCount,
@@ -530,7 +530,7 @@ export default function ReceiptPreview({
                       className="receipt-image"
                       style={{
                         display: 'block',
-                        maxWidth: '100%',
+                        width: '100%',
                         height: 'auto',
                         margin: 0,
                         verticalAlign: 'top'
