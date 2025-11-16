@@ -219,6 +219,8 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
         });
 
         client.on('error', (err) => {
+            // Explicitly destroy socket on error to prevent leaks
+            client.destroy();
             if (!resolved) {
                 resolved = true;
                 reject({ code: 'CONNECTION_ERROR', message: err.message });
@@ -232,6 +234,8 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
             client.setTimeout(0);
             client.write(data, (err) => {
                 if (err) {
+                    // Destroy socket on write error
+                    client.destroy();
                     if (!resolved) {
                         resolved = true;
                         reject({ code: 'WRITE_ERROR', message: err.message });
@@ -355,6 +359,8 @@ function queryPrinterStatus(host, port, timeout = DEFAULT_TIMEOUT) {
 
         client.on('error', (err) => {
             console.log(`[Status Query] Error: ${err.message}`);
+            // Explicitly destroy socket on error to prevent leaks
+            client.destroy();
             reject({ code: 'CONNECTION_ERROR', message: err.message });
         });
 
