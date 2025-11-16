@@ -1,6 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
 import type { PrinterConfig, PrinterStatus } from '@/types';
 
+// Timeout constants
+const STATUS_QUERY_TIMEOUT_MS = 5000; // 5 seconds for status queries
+const PRINT_TIMEOUT_MS = 10000; // 10 seconds for print operations
+
 // Get bridge URL from localStorage or use default
 const getDefaultBridgeUrl = (): string => {
   return localStorage.getItem('printerBridgeUrl') || 'ws://127.0.0.1:8765';
@@ -121,11 +125,11 @@ export function usePrinterClient() {
         // Send request
         wsRef.current.send(JSON.stringify(request));
 
-        // Timeout after 5 seconds
+        // Timeout after configured duration
         setTimeout(() => {
           wsRef.current?.removeEventListener('message', handleMessage);
           reject(new Error('Status query timeout'));
-        }, 5000);
+        }, STATUS_QUERY_TIMEOUT_MS);
       });
     },
     []
@@ -147,7 +151,7 @@ export function usePrinterClient() {
           setError('Print timeout - printer not responding');
           wsRef.current?.removeEventListener('message', handleMessage);
           reject(new Error('Print timeout'));
-        }, 10000);
+        }, PRINT_TIMEOUT_MS);
 
         try {
           setIsPrinting(true);

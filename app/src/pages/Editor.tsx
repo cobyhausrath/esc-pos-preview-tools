@@ -14,6 +14,7 @@ import TemplateButtons from '@/components/TemplateButtons';
 import type { TemplateType, ReceiptData } from '@/types';
 
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
+const CODE_EXECUTION_DEBOUNCE_MS = 500; // Debounce delay for auto-executing code on change
 
 export default function Editor() {
   const { settings, updateSettings } = useSettings();
@@ -100,7 +101,7 @@ export default function Editor() {
   useEffect(() => {
     const timeout = setTimeout(() => {
       executeCode();
-    }, 500);
+    }, CODE_EXECUTION_DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
   }, [executeCode]);
