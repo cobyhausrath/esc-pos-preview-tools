@@ -150,7 +150,11 @@ function decodeRasterImage(
       const byte = data[dataIdx++];
 
       // Extract 8 horizontal pixels from this byte
-      // bit 7 (MSB) is leftmost pixel, bit 0 (LSB) is rightmost
+      // GS v 0 format: bit 7 (MSB) = leftmost pixel, bit 0 (LSB) = rightmost
+      // We iterate bit from 0→7, testing each bit position with (1 << bit)
+      // But map to x position as (7 - bit) to reverse the order:
+      //   bit 0 → x offset 7 (rightmost in this byte)
+      //   bit 7 → x offset 0 (leftmost in this byte)
       for (let bit = 0; bit < 8; bit++) {
         const x = xByte * 8 + (7 - bit);
         if (x >= widthPixels) break;
@@ -489,7 +493,9 @@ export default function ReceiptPreview({
                 });
               }
 
-              // Validate subcommand is '0' (0x30 = ASCII '0' for raster format, or 0x00 for binary)
+              // Validate subcommand for raster format
+              // ESC/POS spec uses ASCII '0' (0x30), but some implementations may use binary 0x00
+              // Accept both to maximize compatibility
               if (subCmd !== 0x30 && subCmd !== 0) {
                 if (import.meta.env.DEV) {
                   console.warn('[GS v] Unsupported subcommand, skipping header only:', subCmd, `(0x${subCmd.toString(16)})`);
