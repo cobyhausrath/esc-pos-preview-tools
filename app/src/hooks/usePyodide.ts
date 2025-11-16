@@ -149,7 +149,11 @@ validate_code(${JSON.stringify(code)})
         ]);
 
         if (!validationResult) {
-          throw new Error('Code validation failed: Dangerous operations detected');
+          // Log the code that failed validation for debugging
+          if (import.meta.env.DEV) {
+            console.error('Code validation failed for:', code);
+          }
+          throw new Error('Code validation failed: Dangerous operations detected. Check that only allowed imports (escpos, PIL, io, base64) are used.');
         }
 
         // Execute the code with timeout
@@ -266,13 +270,16 @@ p.set(align='left')
         // Ensure Pillow is installed (lazy loading for performance)
         if (!pillowInstalledRef.current) {
           if (import.meta.env.DEV) {
-            console.log('Installing Pillow for image support...');
+            console.log('[Image] Installing Pillow for image support...');
           }
           await pyodide.runPythonAsync(`
 import micropip
 await micropip.install('Pillow')
           `);
           pillowInstalledRef.current = true;
+          if (import.meta.env.DEV) {
+            console.log('[Image] Pillow installed successfully');
+          }
         }
 
         // Convert ImageData to PNG blob
@@ -299,6 +306,10 @@ p.set(align='left')
 
         // Convert blob to base64
         const base64 = await blobToBase64(blob);
+
+        if (import.meta.env.DEV) {
+          console.log(`[Image] Generated ${base64.length} bytes of base64 data for ${width}x${height} image`);
+        }
 
         // Generate python-escpos code with embedded image
         const code = `from escpos.printer import Dummy

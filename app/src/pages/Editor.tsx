@@ -288,6 +288,10 @@ export default function Editor() {
       setIsExecuting(true);
       setError(null);
 
+      if (import.meta.env.DEV) {
+        console.log('[Image] Processing file:', file.name, file.type, `${Math.round(file.size / 1024)}KB`);
+      }
+
       // Validate file type
       if (!file.type.startsWith('image/')) {
         throw new Error('Please upload an image file');
@@ -303,8 +307,16 @@ export default function Editor() {
         img.src = imageUrl;
       });
 
+      if (import.meta.env.DEV) {
+        console.log(`[Image] Image loaded: ${img.width}x${img.height}`);
+      }
+
       // Process image with dithering
       const processedData = await processImageForPrinting(img);
+
+      if (import.meta.env.DEV) {
+        console.log(`[Image] Image processed with dithering: ${processedData.width}x${processedData.height}`);
+      }
 
       // Generate python-escpos code for the image
       const imageCode = await generateImageCode(processedData, processedData.width, processedData.height);
@@ -313,10 +325,11 @@ export default function Editor() {
       URL.revokeObjectURL(imageUrl);
 
       if (import.meta.env.DEV) {
-        console.log(`Generated image code for ${processedData.width}x${processedData.height} image`);
+        console.log('[Image] Code generation complete, updating editor');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to process image';
+      console.error('[Image] Upload failed:', err);
       setError(errorMessage);
     } finally {
       setIsExecuting(false);
