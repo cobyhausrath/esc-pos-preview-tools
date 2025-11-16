@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: PrinterSettings = {
   printerProfile: 'NT-80-V-UL',
   imageImplementation: 'bitImageRaster',
   autoCheckStatus: true,
-  statusCheckInterval: 5, // Check every 5 seconds
+  statusCheckInterval: 10, // Check every 10 seconds (reduced frequency to avoid conflicts)
   autoConnect: false,
   autoCut: true,
   lastPrinterConfig: null,

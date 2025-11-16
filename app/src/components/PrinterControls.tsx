@@ -32,6 +32,8 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [bridgeUrlInput, setBridgeUrlInput] = useState(printer.bridgeUrl);
   const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCommandTimeRef = useRef<number>(0);
+  const commandCooldownMs = 3000; // Don't check status for 3 seconds after any command
 
   // Auto-connect on mount
   useEffect(() => {
@@ -52,6 +54,12 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
     if (printer.isConnected && settings.statusCheckInterval > 0) {
       // Start interval
       statusIntervalRef.current = setInterval(() => {
+        // Skip status check if a command was sent recently (cooldown period)
+        const timeSinceLastCommand = Date.now() - lastCommandTimeRef.current;
+        if (timeSinceLastCommand < commandCooldownMs) {
+          console.log(`[Status] Skipping check - cooldown active (${Math.round((commandCooldownMs - timeSinceLastCommand) / 1000)}s remaining)`);
+          return;
+        }
         handleCheckStatus();
       }, settings.statusCheckInterval * 1000);
 
@@ -145,6 +153,8 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
 
   const handleFeedPaper = async () => {
     try {
+      // Mark command time to pause status checks
+      lastCommandTimeRef.current = Date.now();
       await printer.feedPaper(3); // Feed 3 lines
     } catch (err) {
       console.error('Feed paper failed:', err);
@@ -153,6 +163,8 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
 
   const handleCutPaper = async () => {
     try {
+      // Mark command time to pause status checks
+      lastCommandTimeRef.current = Date.now();
       await printer.cutPaper(false); // Full cut
     } catch (err) {
       console.error('Cut paper failed:', err);
@@ -160,6 +172,8 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
   };
 
   const handlePrintWithAutoCut = async () => {
+    // Mark command time to pause status checks
+    lastCommandTimeRef.current = Date.now();
     onPrint();
     // If auto-cut is enabled, cut after print
     if (settings.autoCut) {
