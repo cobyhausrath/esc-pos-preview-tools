@@ -227,6 +227,7 @@ export function usePrinterClient() {
     async (lines: number = 3): Promise<void> => {
       // ESC d n - Print and feed n lines
       const command = new Uint8Array([0x1B, 0x64, lines]);
+      console.log(`[Feed] Sending ESC d ${lines} command:`, Array.from(command).map(b => `0x${b.toString(16).toUpperCase().padStart(2, '0')}`).join(' '));
       return sendRawData(command);
     },
     [sendRawData]
@@ -236,6 +237,7 @@ export function usePrinterClient() {
     async (partial: boolean = false): Promise<void> => {
       // GS V m - Cut paper (m=0: full cut, m=1: partial cut)
       const command = new Uint8Array([0x1D, 0x56, partial ? 1 : 0]);
+      console.log(`[Cut] Sending GS V ${partial ? 1 : 0} command:`, Array.from(command).map(b => `0x${b.toString(16).toUpperCase().padStart(2, '0')}`).join(' '));
       return sendRawData(command);
     },
     [sendRawData]

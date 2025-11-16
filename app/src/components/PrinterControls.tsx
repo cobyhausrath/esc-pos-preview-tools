@@ -160,6 +160,7 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
 
   const handleFeedPaper = async () => {
     try {
+      console.log('[Feed Button] Clicked');
       // Mark command time to pause status checks
       lastCommandTimeRef.current = Date.now();
       await printer.feedPaper(3); // Feed 3 lines
@@ -170,6 +171,7 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
 
   const handleCutPaper = async () => {
     try {
+      console.log('[Cut Button] Clicked');
       // Mark command time to pause status checks
       lastCommandTimeRef.current = Date.now();
       await printer.cutPaper(false); // Full cut
@@ -181,6 +183,7 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
   const handlePrintWithAutoCut = async () => {
     // Mark command time to pause status checks
     lastCommandTimeRef.current = Date.now();
+    console.log(`[Print] Auto-feed: ${settings.autoFeed}, Auto-cut: ${settings.autoCut}`);
     onPrint();
 
     // Wait for print to finish, then do auto-feed and/or auto-cut
@@ -189,10 +192,12 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
         try {
           // Auto-feed first (if enabled)
           if (settings.autoFeed) {
+            console.log('[Print] Executing auto-feed');
             await printer.feedPaper(3);
           }
           // Then auto-cut (if enabled)
           if (settings.autoCut) {
+            console.log('[Print] Executing auto-cut');
             await printer.cutPaper(false);
           }
         } catch (err) {
