@@ -125,10 +125,12 @@ export type DashboardFilter = 'all' | JobStatus;
 
 // Context Menu types
 export type AlignmentType = 'left' | 'center' | 'right';
+export type FontType = 'a' | 'b' | 'c';
+export type LineContentType = 'text' | 'image' | 'barcode' | 'qrcode';
 
 export interface CommandMetadata {
-  type: 'initialize' | 'alignment' | 'bold' | 'underline' | 'size' | 'cut';
-  value?: AlignmentType | boolean | number;
+  type: 'initialize' | 'alignment' | 'bold' | 'underline' | 'size' | 'cut' | 'font' | 'invert' | 'flip' | 'smooth' | 'image' | 'barcode' | 'qrcode';
+  value?: AlignmentType | boolean | number | string | FontType;
   pythonCode: string;
 }
 
@@ -136,6 +138,16 @@ export interface LineAttributes {
   align: AlignmentType;
   bold: boolean;
   underline: boolean;
+  font?: FontType;
+  width?: number;
+  height?: number;
+  invert?: boolean;
+  flip?: boolean;
+  smooth?: boolean;
+  doubleWidth?: boolean;
+  doubleHeight?: boolean;
+  contentType?: LineContentType;
+  textContent?: string; // Original text content for barcode/QR conversion
 }
 
 export interface LineState extends LineAttributes {
@@ -147,6 +159,13 @@ export interface ContextMenuPosition {
   y: number;
 }
 
+export interface ContextMenuAction {
+  type: 'format' | 'convert';
+  attribute?: string;
+  value?: string | boolean | number;
+  pythonCode: string;
+}
+
 export interface ContextMenuProps {
   lineNumber: number;
   attributes: LineAttributes;
@@ -156,4 +175,5 @@ export interface ContextMenuProps {
   onToggleBold: (lineNumber: number, currentValue: boolean) => void;
   onToggleUnderline: (lineNumber: number, currentValue: boolean) => void;
   onChangeAlignment: (lineNumber: number, newAlign: AlignmentType) => void;
+  onAction: (lineNumber: number, action: ContextMenuAction) => void;
 }

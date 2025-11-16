@@ -343,35 +343,13 @@ export default function Editor() {
   };
 
   // Handle context menu actions
-  const handleContextMenuAction = useCallback((lineNumber: number, setCommand: string) => {
+  const handleContextMenuAction = useCallback((lineNumber: number, pythonCode: string) => {
     const modifier = new CodeModifier(code);
-    const codeLineNumber = modifier.findCodeLineForPreviewLine(lineNumber);
 
-    if (codeLineNumber === -1) {
-      console.error('Could not find code line for preview line', lineNumber);
-      return;
-    }
+    // Use the new applyCommand method which can handle all types of commands
+    // (p.set, p.barcode, p.qr, p.image, etc.)
+    modifier.applyCommand(lineNumber, pythonCode);
 
-    // Extract attribute and value from setCommand (e.g., "p.set(bold=True)")
-    const match = setCommand.match(/p\.set\((\w+)=(.+)\)/);
-    if (!match) {
-      console.error('Invalid set command:', setCommand);
-      return;
-    }
-
-    const [, attribute, valueStr] = match;
-    let value: string | boolean | number;
-
-    // Parse value
-    if (valueStr === 'True') value = true;
-    else if (valueStr === 'False') value = false;
-    else if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
-      value = valueStr.slice(1, -1); // Remove quotes
-    } else {
-      value = parseInt(valueStr, 10);
-    }
-
-    modifier.insertSetCall(codeLineNumber, attribute, value);
     const newCode = modifier.getModifiedCode();
     setCode(newCode);
   }, [code]);
