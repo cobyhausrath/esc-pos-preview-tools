@@ -62,12 +62,16 @@ export function usePyodide(settings?: PyodideSettings) {
           const constantsResponse = await fetch('/python/escpos_constants.py');
           if (constantsResponse.ok) {
             const constantsCode = await constantsResponse.text();
-            await pyodideInstance.runPythonAsync(constantsCode);
+
+            // Write to Pyodide filesystem so it can be imported as a module
+            pyodideInstance.FS.writeFile('/escpos_constants.py', constantsCode);
 
             const verifierResponse = await fetch('/python/escpos_verifier.py');
             if (verifierResponse.ok) {
               const verifierCode = await verifierResponse.text();
-              await pyodideInstance.runPythonAsync(verifierCode);
+
+              // Write to Pyodide filesystem so it can be imported as a module
+              pyodideInstance.FS.writeFile('/escpos_verifier.py', verifierCode);
 
               // Test that verifier is available
               await pyodideInstance.runPythonAsync(`
@@ -220,18 +224,31 @@ escpos_bytes = bytes([${bytesArray.join(', ')}])
 python_code = verifier.bytes_to_python_escpos(escpos_bytes)
 
 # Clean up the generated code for editor display
-# Remove the escpos_output line at the end (not needed for user editing)
+# Extract only the command lines (between "# Execute commands" and "# Get the generated ESC-POS bytes")
 lines = python_code.split('\\n')
 
-# Find where to cut off (before "# Get the generated ESC-POS bytes")
-cutoff = len(lines)
+# Find the start (after "# Execute commands")
+start = 0
 for i, line in enumerate(lines):
-    if '# Get the generated ESC-POS bytes' in line or line.strip() == '':
-        cutoff = i
+    if '# Execute commands' in line:
+        start = i + 1
         break
 
-# Join relevant lines and clean up
-python_code = '\\n'.join(lines[:cutoff]).strip()
+# Find the end (before "# Get the generated ESC-POS bytes")
+end = len(lines)
+for i, line in enumerate(lines):
+    if '# Get the generated ESC-POS bytes' in line:
+        end = i
+        break
+
+# Extract command lines
+command_lines = lines[start:end]
+
+# Remove trailing empty lines
+while command_lines and not command_lines[-1].strip():
+    command_lines.pop()
+
+python_code = '\\n'.join(command_lines).strip()
 
 # Return the cleaned code
 python_code
