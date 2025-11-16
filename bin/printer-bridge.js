@@ -206,16 +206,23 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
         const client = new net.Socket();
         let connected = false;
         let bytesSent = 0;
+        let resolved = false; // Track if we've already resolved
 
         client.setTimeout(timeout);
 
         client.on('timeout', () => {
             client.destroy();
-            reject({ code: 'TIMEOUT', message: `Connection timeout after ${timeout}ms` });
+            if (!resolved) {
+                resolved = true;
+                reject({ code: 'TIMEOUT', message: `Connection timeout after ${timeout}ms` });
+            }
         });
 
         client.on('error', (err) => {
-            reject({ code: 'CONNECTION_ERROR', message: err.message });
+            if (!resolved) {
+                resolved = true;
+                reject({ code: 'CONNECTION_ERROR', message: err.message });
+            }
         });
 
         client.on('connect', () => {
@@ -225,7 +232,10 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
             client.setTimeout(0);
             client.write(data, (err) => {
                 if (err) {
-                    reject({ code: 'WRITE_ERROR', message: err.message });
+                    if (!resolved) {
+                        resolved = true;
+                        reject({ code: 'WRITE_ERROR', message: err.message });
+                    }
                     return;
                 }
                 bytesSent = data.length;
@@ -233,15 +243,23 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
         });
 
         client.on('drain', () => {
+            // Data has been written to the OS buffer and sent to printer
+            // Resolve immediately so the UI gets instant feedback
+            if (!resolved && connected && bytesSent === data.length) {
+                resolved = true;
+                resolve({ bytesSent });
+            }
+            // Close the connection in the background
             client.end();
         });
 
         client.on('close', () => {
-            if (connected && bytesSent === data.length) {
-                resolve({ bytesSent });
-            } else if (!connected) {
+            // Only reject if we haven't resolved yet and something went wrong
+            if (!resolved && !connected) {
+                resolved = true;
                 reject({ code: 'CONNECTION_CLOSED', message: 'Connection closed before sending data' });
             }
+            // Otherwise, we already resolved in 'drain' - nothing to do
         });
 
         client.connect(port, host);
