@@ -232,7 +232,9 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
             // Disable timeout after successful connection
             // ESC-POS printers typically don't send responses, so we don't want to timeout
             client.setTimeout(0);
-            client.write(data, (err) => {
+
+            // write() returns true if data was flushed immediately, false if buffered
+            const flushed = client.write(data, (err) => {
                 if (err) {
                     // Destroy socket on write error
                     client.destroy();
@@ -243,11 +245,20 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
                     return;
                 }
                 bytesSent = data.length;
+
+                // If write returned true (flushed immediately), resolve now
+                // For small writes, 'drain' event won't fire
+                if (flushed && !resolved) {
+                    resolved = true;
+                    resolve({ bytesSent });
+                    // Close connection in background
+                    client.end();
+                }
             });
         });
 
         client.on('drain', () => {
-            // Data has been written to the OS buffer and sent to printer
+            // Data has been written to the OS buffer (after backpressure)
             // Resolve immediately so the UI gets instant feedback
             if (!resolved && connected && bytesSent === data.length) {
                 resolved = true;
