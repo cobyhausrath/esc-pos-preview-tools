@@ -692,6 +692,9 @@ body {
   font-family: 'Courier New', monospace;
   font-size: 0.875rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  /* Fixed width to mimic thermal paper (80mm ≈ 302px at 96dpi) */
+  max-width: 302px;
+  margin: 0 auto;
 }
 
 .loading-indicator {
