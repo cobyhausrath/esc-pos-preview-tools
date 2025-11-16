@@ -6,12 +6,16 @@ import { HexFormatter } from '@/utils/hexFormatter';
 import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
 import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
 import { CodeModifier } from '@/utils/codeModifier';
+import { processImageForPrinting } from '@/utils/dithering';
+import { replaceBase64Image, type ImageMatch } from '@/utils/imageParser';
 import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
 import PrinterControls from '@/components/PrinterControls';
 import TemplateButtons from '@/components/TemplateButtons';
+import ImageOptionsModal from '@/components/ImageOptionsModal';
 import type { TemplateType, ReceiptData } from '@/types';
+import type { DitheringAlgorithm, ImageImplementation } from '@/components/ImageOptionsModal';
 
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
 const CODE_EXECUTION_DEBOUNCE_MS = 500; // Debounce delay for auto-executing code on change
@@ -32,6 +36,7 @@ export default function Editor() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHex, setShowHex] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<ImageMatch | null>(null);
 
   // Handle shared content from PWA
   useEffect(() => {
@@ -199,90 +204,116 @@ export default function Editor() {
   };
 
   /**
-   * Process image for thermal printing with Floyd-Steinberg dithering
+   * Handle image badge click - open options modal
    */
-  const processImageForPrinting = async (img: HTMLImageElement, maxWidth = 384): Promise<ImageData> => {
-    return new Promise((resolve, reject) => {
-      try {
-        // Create canvas for image processing
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
+  const handleImageClick = useCallback((image: ImageMatch) => {
+    setSelectedImage(image);
+  }, []);
 
-        // Calculate dimensions maintaining aspect ratio
-        let width = img.width;
-        let height = img.height;
+  /**
+   * Handle updating image with new file
+   */
+  const handleUpdateImage = useCallback(async (
+    image: ImageMatch,
+    file: File,
+    dithering: DitheringAlgorithm,
+    implementation: ImageImplementation
+  ) => {
+    try {
+      setIsExecuting(true);
+      setError(null);
 
-        if (width > maxWidth) {
-          height = Math.floor((height * maxWidth) / width);
-          width = maxWidth;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        // Draw image
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Get image data
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-
-        // Convert to grayscale and apply Floyd-Steinberg dithering
-        for (let y = 0; y < height; y++) {
-          for (let x = 0; x < width; x++) {
-            const idx = (y * width + x) * 4;
-
-            // Convert to grayscale
-            const gray = Math.floor(data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114);
-
-            // Threshold and calculate error
-            const newVal = gray < 128 ? 0 : 255;
-            const error = gray - newVal;
-
-            // Set pixel
-            data[idx] = data[idx + 1] = data[idx + 2] = newVal;
-
-            // Distribute error (Floyd-Steinberg)
-            if (x + 1 < width) {
-              const nextIdx = (y * width + x + 1) * 4;
-              data[nextIdx] += (error * 7) / 16;
-              data[nextIdx + 1] += (error * 7) / 16;
-              data[nextIdx + 2] += (error * 7) / 16;
-            }
-
-            if (y + 1 < height) {
-              if (x > 0) {
-                const diagIdx = ((y + 1) * width + x - 1) * 4;
-                data[diagIdx] += (error * 3) / 16;
-                data[diagIdx + 1] += (error * 3) / 16;
-                data[diagIdx + 2] += (error * 3) / 16;
-              }
-
-              const belowIdx = ((y + 1) * width + x) * 4;
-              data[belowIdx] += (error * 5) / 16;
-              data[belowIdx + 1] += (error * 5) / 16;
-              data[belowIdx + 2] += (error * 5) / 16;
-
-              if (x + 1 < width) {
-                const diagIdx = ((y + 1) * width + x + 1) * 4;
-                data[diagIdx] += (error * 1) / 16;
-                data[diagIdx + 1] += (error * 1) / 16;
-                data[diagIdx + 2] += (error * 1) / 16;
-              }
-            }
-          }
-        }
-
-        resolve(imageData);
-      } catch (err) {
-        reject(err);
+      if (import.meta.env.DEV) {
+        console.log('[Image] Processing replacement:', file.name, file.type, dithering, implementation);
       }
-    });
-  };
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        throw new Error('Please upload an image file');
+      }
+
+      // Create image from file
+      const imageUrl = URL.createObjectURL(file);
+      const img = new Image();
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = imageUrl;
+      });
+
+      // Process image with selected dithering algorithm
+      const processedData = await processImageForPrinting(img, 384, dithering);
+
+      if (import.meta.env.DEV) {
+        console.log(`[Image] Image processed: ${processedData.width}x${processedData.height}`);
+      }
+
+      // Generate new base64 code for the image
+      const imageCode = await generateImageCode(processedData, processedData.width, processedData.height);
+
+      // Extract just the base64 data from the generated code
+      const base64Match = imageCode.match(/base64\.b64decode\('''([^']+)'''\)/);
+      if (!base64Match) {
+        throw new Error('Failed to extract base64 data from generated code');
+      }
+
+      const newBase64 = base64Match[1];
+
+      // Replace the image in the existing code
+      const newCode = replaceBase64Image(
+        code,
+        image,
+        newBase64,
+        processedData.width,
+        processedData.height,
+        implementation
+      );
+
+      setCode(newCode);
+      URL.revokeObjectURL(imageUrl);
+
+      if (import.meta.env.DEV) {
+        console.log('[Image] Image replacement complete');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to process image';
+      console.error('[Image] Replacement failed:', err);
+      setError(errorMessage);
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [code, generateImageCode]);
+
+  /**
+   * Handle updating image settings only (without replacing image)
+   */
+  const handleUpdateSettings = useCallback((
+    image: ImageMatch,
+    implementation: ImageImplementation
+  ) => {
+    try {
+      if (import.meta.env.DEV) {
+        console.log('[Image] Updating settings:', implementation);
+      }
+
+      // Replace settings in code
+      const newCode = replaceBase64Image(
+        code,
+        image,
+        image.base64Data, // Keep same image
+        image.width,
+        image.height,
+        implementation
+      );
+
+      setCode(newCode);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update settings';
+      console.error('[Image] Settings update failed:', err);
+      setError(errorMessage);
+    }
+  }, [code]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -411,6 +442,7 @@ export default function Editor() {
             onChange={setCode}
             isExecuting={isExecuting}
             error={error}
+            onImageClick={handleImageClick}
           />
 
           <div className="example-buttons">
@@ -449,6 +481,16 @@ export default function Editor() {
           )}
         </div>
       </div>
+
+      {/* Image Options Modal */}
+      {selectedImage && (
+        <ImageOptionsModal
+          image={selectedImage}
+          onClose={() => setSelectedImage(null)}
+          onUpdateImage={handleUpdateImage}
+          onUpdateSettings={handleUpdateSettings}
+        />
+      )}
     </div>
   );
 }
