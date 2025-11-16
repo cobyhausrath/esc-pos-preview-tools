@@ -27,6 +27,12 @@ export function usePrinterClient() {
   const connect = useCallback((printer: PrinterConfig) => {
     return new Promise<void>((resolve, reject) => {
       try {
+        // Close existing connection if any to prevent duplicates
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+
         const ws = new WebSocket(bridgeUrl);
 
         ws.onopen = () => {
