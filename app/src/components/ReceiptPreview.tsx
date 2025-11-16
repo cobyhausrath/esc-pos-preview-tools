@@ -489,8 +489,17 @@ export default function ReceiptPreview({
                 });
               }
 
-              // Check if we have full command and it's raster format
-              if (i + totalSize <= bytes.length && subCmd === 0) {
+              // Validate subcommand is 0 (raster format)
+              if (subCmd !== 0) {
+                if (import.meta.env.DEV) {
+                  console.warn('[GS v] Unsupported subcommand, skipping header only:', subCmd);
+                }
+                i += 8; // Skip 8-byte header only
+                continue;
+              }
+
+              // Check if we have full command data
+              if (i + totalSize <= bytes.length) {
                 // Extract and decode raster image data
                 const imageData = bytes.slice(i + 8, i + totalSize);
 
@@ -508,7 +517,7 @@ export default function ReceiptPreview({
                 // Skip if data URL generation failed
                 if (!imageDataURL) {
                   if (import.meta.env.DEV) {
-                    console.error('[GS v 0] Failed to generate data URL, skipping image');
+                    console.error('[GS v 0] Failed to generate data URL, skipping entire command');
                   }
                   i += totalSize;
                   continue;
@@ -562,12 +571,12 @@ export default function ReceiptPreview({
 
                 continue;
               } else {
-                // We have the header but not enough data or wrong subcommand
-                // Skip at least the header to avoid treating it as garbage text
+                // Not enough data - this is likely truncated/incomplete
+                // Only skip the 8-byte header to avoid over-skipping
                 if (import.meta.env.DEV) {
-                  console.warn('[GS v 0] Incomplete or unsupported, skipping header + available data');
+                  console.warn('[GS v 0] Incomplete data - need', totalSize, 'bytes but only have', bytes.length - i, 'remaining. Skipping header only.');
                 }
-                i += Math.min(totalSize, bytes.length - i);
+                i += 8;
                 continue;
               }
             }
