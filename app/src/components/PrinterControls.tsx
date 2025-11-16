@@ -84,6 +84,11 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
   };
 
   const handleBridgeUrlUpdate = () => {
+    // Validate WebSocket URL format
+    if (bridgeUrlInput && !bridgeUrlInput.startsWith('ws://') && !bridgeUrlInput.startsWith('wss://')) {
+      console.warn('Bridge URL should start with ws:// (for HTTP sites) or wss:// (for HTTPS sites)');
+      // Still allow the update - user might be correcting it
+    }
     printer.updateBridgeUrl(bridgeUrlInput);
   };
 
