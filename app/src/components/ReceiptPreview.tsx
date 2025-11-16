@@ -14,6 +14,64 @@ interface ReceiptPreviewProps {
 }
 
 /**
+ * Decode ESC/POS bit image data to a data URL for display
+ *
+ * ESC * format: ESC * m nL nH [data]
+ * - Data is organized in vertical columns
+ * - Each byte represents 8 vertical pixels (bit 0 = top, bit 7 = bottom)
+ * - For 24-dot modes, 3 bytes per column (top 8, middle 8, bottom 8)
+ */
+function decodeEscPosImage(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  bytesPerColumn: number
+): string {
+  // Create canvas for rendering
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  // Create image data
+  const imageData = ctx.createImageData(width, height);
+  const pixels = imageData.data;
+
+  // Decode bitmap data (column-major order)
+  let dataIdx = 0;
+  for (let x = 0; x < width; x++) {
+    for (let byteInCol = 0; byteInCol < bytesPerColumn; byteInCol++) {
+      if (dataIdx >= data.length) break;
+
+      const byte = data[dataIdx++];
+      const yOffset = byteInCol * 8;
+
+      // Extract 8 vertical pixels from this byte
+      for (let bit = 0; bit < 8; bit++) {
+        const y = yOffset + bit;
+        if (y >= height) break;
+
+        const pixelOn = (byte & (1 << bit)) !== 0;
+        const pixelIdx = (y * width + x) * 4;
+
+        // Set pixel color (black if on, white if off)
+        pixels[pixelIdx] = pixelOn ? 0 : 255; // R
+        pixels[pixelIdx + 1] = pixelOn ? 0 : 255; // G
+        pixels[pixelIdx + 2] = pixelOn ? 0 : 255; // B
+        pixels[pixelIdx + 3] = 255; // A
+      }
+    }
+  }
+
+  // Put pixels on canvas
+  ctx.putImageData(imageData, 0, 0);
+
+  // Convert to data URL
+  return canvas.toDataURL('image/png');
+}
+
+/**
  * ReceiptPreview - Display formatted ESC-POS receipt with context menu support
  *
  * This component:
@@ -156,17 +214,62 @@ export default function ReceiptPreview({
             const mode = bytes[i + 2];
             const nL = bytes[i + 3];
             const nH = bytes[i + 4];
-            const dataBytes = nL + (nH * 256);
-            const totalSize = 5 + dataBytes;
+            const widthInBytes = nL + (nH * 256);
+
+            // Determine dots per column based on mode
+            let dotsPerColumn = 8;
+            if (mode === 0 || mode === 1) dotsPerColumn = 8;
+            else if (mode === 32 || mode === 33) dotsPerColumn = 24;
+
+            const bytesPerColumn = dotsPerColumn / 8;
+            const totalDataBytes = widthInBytes;
+            const totalSize = 5 + totalDataBytes;
 
             if (i + totalSize <= bytes.length) {
-              // Add image placeholder to current line
-              currentLine += `[IMAGE: ${dataBytes} bytes]`;
+              // Extract and decode image data
+              const imageData = bytes.slice(i + 5, i + totalSize);
+              const width = widthInBytes / bytesPerColumn;
+              const height = dotsPerColumn;
+
+              // Decode bitmap and create data URL
+              const imageDataURL = decodeEscPosImage(imageData, width, height, bytesPerColumn);
+
+              // Flush current line if exists
+              if (currentLine) {
+                lines.push({
+                  text: currentLine,
+                  align: currentAlign,
+                  bold: currentBold,
+                  underline: currentUnderline,
+                  lineNumber: lineCount,
+                });
+                newCommandMap.set(lineCount, {
+                  align: currentAlign,
+                  bold: currentBold,
+                  underline: currentUnderline,
+                  commands: [...lineCommands],
+                });
+                lineCount++;
+                lineCommands = [];
+                currentLine = '';
+              }
+
+              // Add image as a special line with data URL
+              lines.push({
+                text: `__IMAGE__${imageDataURL}`,
+                align: 'center',
+                bold: false,
+                underline: false,
+                lineNumber: lineCount,
+              });
+              lineCount++;
+
               lineCommands.push({
                 type: 'image',
                 value: mode,
                 pythonCode: `p.image(img, impl='bitImageColumn')`,
               });
+
               i += totalSize;
               continue;
             }
@@ -345,6 +448,28 @@ export default function ReceiptPreview({
         ) : escposBytes ? (
           <div className="receipt-content">
             {previewLines.map((line, index) => {
+              // Check if this is an image line
+              if (line.text && line.text.startsWith('__IMAGE__')) {
+                const imageDataURL = line.text.substring('__IMAGE__'.length);
+                return (
+                  <div
+                    key={index}
+                    className={`receipt-line ${line.align}`}
+                    data-line={line.lineNumber}
+                    data-align={line.align}
+                    onContextMenu={handleContextMenu}
+                  >
+                    <img
+                      src={imageDataURL}
+                      alt="Receipt image"
+                      className="receipt-image"
+                      style={{ maxWidth: '100%', height: 'auto' }}
+                    />
+                  </div>
+                );
+              }
+
+              // Regular text line
               const LineTag = line.bold ? 'strong' : 'span';
               const content = line.underline ? (
                 <u>

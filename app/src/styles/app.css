@@ -999,3 +999,13 @@ body {
 .receipt-line.left {
   text-align: left;
 }
+
+.receipt-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+}
