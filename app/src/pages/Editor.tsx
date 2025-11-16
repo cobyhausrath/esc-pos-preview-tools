@@ -15,7 +15,7 @@ import type { TemplateType, ReceiptData } from '@/types';
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
 
 export default function Editor() {
-  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode } = usePyodide();
+  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode, generateImageCode } = usePyodide();
   const printer = usePrinterClient();
 
   const [code, setCode] = useState(DEFAULT_CODE);
@@ -194,6 +194,150 @@ export default function Editor() {
     }
   };
 
+  /**
+   * Process image for thermal printing with Floyd-Steinberg dithering
+   */
+  const processImageForPrinting = async (img: HTMLImageElement, maxWidth = 384): Promise<ImageData> => {
+    return new Promise((resolve, reject) => {
+      try {
+        // Create canvas for image processing
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+
+        // Calculate dimensions maintaining aspect ratio
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.floor((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw image
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Get image data
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+
+        // Convert to grayscale and apply Floyd-Steinberg dithering
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+
+            // Convert to grayscale
+            const gray = Math.floor(data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114);
+
+            // Threshold and calculate error
+            const newVal = gray < 128 ? 0 : 255;
+            const error = gray - newVal;
+
+            // Set pixel
+            data[idx] = data[idx + 1] = data[idx + 2] = newVal;
+
+            // Distribute error (Floyd-Steinberg)
+            if (x + 1 < width) {
+              const nextIdx = (y * width + x + 1) * 4;
+              data[nextIdx] += (error * 7) / 16;
+              data[nextIdx + 1] += (error * 7) / 16;
+              data[nextIdx + 2] += (error * 7) / 16;
+            }
+
+            if (y + 1 < height) {
+              if (x > 0) {
+                const diagIdx = ((y + 1) * width + x - 1) * 4;
+                data[diagIdx] += (error * 3) / 16;
+                data[diagIdx + 1] += (error * 3) / 16;
+                data[diagIdx + 2] += (error * 3) / 16;
+              }
+
+              const belowIdx = ((y + 1) * width + x) * 4;
+              data[belowIdx] += (error * 5) / 16;
+              data[belowIdx + 1] += (error * 5) / 16;
+              data[belowIdx + 2] += (error * 5) / 16;
+
+              if (x + 1 < width) {
+                const diagIdx = ((y + 1) * width + x + 1) * 4;
+                data[diagIdx] += (error * 1) / 16;
+                data[diagIdx + 1] += (error * 1) / 16;
+                data[diagIdx + 2] += (error * 1) / 16;
+              }
+            }
+          }
+        }
+
+        resolve(imageData);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      if (import.meta.env.DEV) {
+        console.log('[Image] Processing file:', file.name, file.type, `${Math.round(file.size / 1024)}KB`);
+      }
+
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        throw new Error('Please upload an image file');
+      }
+
+      // Create image from file
+      const imageUrl = URL.createObjectURL(file);
+      const img = new Image();
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = imageUrl;
+      });
+
+      if (import.meta.env.DEV) {
+        console.log(`[Image] Image loaded: ${img.width}x${img.height}`);
+      }
+
+      // Process image with dithering
+      const processedData = await processImageForPrinting(img);
+
+      if (import.meta.env.DEV) {
+        console.log(`[Image] Image processed with dithering: ${processedData.width}x${processedData.height}`);
+      }
+
+      // Generate python-escpos code for the image
+      const imageCode = await generateImageCode(processedData, processedData.width, processedData.height);
+      setCode(imageCode);
+
+      URL.revokeObjectURL(imageUrl);
+
+      if (import.meta.env.DEV) {
+        console.log('[Image] Code generation complete, updating editor');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to process image';
+      console.error('[Image] Upload failed:', err);
+      setError(errorMessage);
+    } finally {
+      setIsExecuting(false);
+      // Reset file input
+      event.target.value = '';
+    }
+  };
+
   // Handle context menu actions
   const handleContextMenuAction = useCallback((lineNumber: number, setCommand: string) => {
     const modifier = new CodeModifier(code);
@@ -239,6 +383,10 @@ export default function Editor() {
           <label className="file-input-label">
             Import .bin
             <input type="file" accept=".bin" onChange={handleImport} />
+          </label>
+          <label className="file-input-label">
+            Upload Image
+            <input type="file" accept="image/*" onChange={handleImageUpload} />
           </label>
         </div>
       </header>

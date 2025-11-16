@@ -82,8 +82,20 @@ p.cut()
 
     case 'image':
       return `# Image Printing
-# Replace 'image.png' with your image path
-p.image('image.png')
+#
+# To print an image:
+# 1. Click the "Upload Image" button above
+# 2. Select your image file (PNG, JPG, etc.)
+# 3. The image will be automatically processed with dithering
+# 4. This code will be replaced with python-escpos image code
+#
+# For now, here's a placeholder:
+
+p.set(align='center')
+p.text('[ IMAGE PLACEHOLDER ]\\n')
+p.text('Click "Upload Image" to add an image\\n')
+p.text('\\n')
+p.set(align='left')
 p.cut()
 `;
 
@@ -100,7 +112,7 @@ export const TEMPLATES: Array<{ id: TemplateType; name: string; description: str
   { id: 'expiry', name: 'Expiry', description: 'Expiration date (+1 week)' },
   { id: 'todo', name: 'To-Do', description: 'Task list' },
   { id: 'note', name: 'Note', description: 'Simple note' },
-  { id: 'image', name: 'Image', description: 'Print an image' },
+  { id: 'image', name: 'Image', description: 'Upload Image button guide' },
 ];
 
 export const EXAMPLE_CODES = {

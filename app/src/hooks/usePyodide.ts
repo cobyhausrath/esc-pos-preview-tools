@@ -12,6 +12,7 @@ export function usePyodide() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initializingRef = useRef(false);
+  const pillowInstalledRef = useRef(false);
 
   useEffect(() => {
     const initPyodide = async () => {
@@ -112,8 +113,8 @@ def validate_code(code_str):
         tree = ast.parse(code_str)
 
         # Allowed imports
-        allowed_import_prefixes = ['escpos']
-        allowed_stdlib_imports = ['io', 'sys', 'typing', 'dataclasses', 'logging', 'ast']
+        allowed_import_prefixes = ['escpos', 'PIL']
+        allowed_stdlib_imports = ['io', 'sys', 'typing', 'dataclasses', 'logging', 'ast', 'base64']
 
         # Check for dangerous operations
         for node in ast.walk(tree):
@@ -148,7 +149,11 @@ validate_code(${JSON.stringify(code)})
         ]);
 
         if (!validationResult) {
-          throw new Error('Code validation failed: Dangerous operations detected');
+          // Log the code that failed validation for debugging
+          if (import.meta.env.DEV) {
+            console.error('Code validation failed for:', code);
+          }
+          throw new Error('Code validation failed: Dangerous operations detected. Check that only allowed imports (escpos, PIL, io, base64) are used.');
         }
 
         // Execute the code with timeout
@@ -234,11 +239,180 @@ python_code
     [pyodide]
   );
 
+  const generateImageCode = useCallback(
+    async (imageData: ImageData, width: number, height: number): Promise<string> => {
+      if (!pyodide) {
+        throw new Error('Pyodide is not initialized');
+      }
+
+      // Validate reasonable size (security/performance)
+      const pixelCount = width * height;
+      const MAX_PIXELS = 384 * 1000; // ~1000 pixels tall for 384px wide
+
+      if (pixelCount > MAX_PIXELS) {
+        console.warn(`[Image] Image too large: ${width}x${height} (${pixelCount} pixels)`);
+        return `from escpos.printer import Dummy
+
+# Create printer
+p = Dummy()
+
+# Image too large
+p.set(align='center')
+p.text('IMAGE TOO LARGE\\n')
+p.text('${width}x${height} pixels\\n')
+p.text('Maximum: ${MAX_PIXELS} pixels\\n')
+p.text('\\n')
+p.set(align='left')
+`;
+      }
+
+      try {
+        // Ensure Pillow is installed (lazy loading for performance)
+        if (!pillowInstalledRef.current) {
+          if (import.meta.env.DEV) {
+            console.log('[Image] Installing Pillow for image support...');
+          }
+          await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('Pillow')
+          `);
+          pillowInstalledRef.current = true;
+          if (import.meta.env.DEV) {
+            console.log('[Image] Pillow installed successfully');
+          }
+        }
+
+        // Convert ImageData to PNG blob
+        const blob = await imageDataToBlob(imageData, width, height);
+
+        // Check blob size (base64 is ~1.33x, limit to 1MB base64 = ~750KB image)
+        const MAX_BLOB_SIZE = 750000; // 750KB
+        if (blob.size > MAX_BLOB_SIZE) {
+          const sizeKB = Math.round(blob.size / 1024);
+          console.warn(`[Image] Image file too large: ${sizeKB}KB`);
+          return `from escpos.printer import Dummy
+
+# Create printer
+p = Dummy()
+
+# Image file too large
+p.set(align='center')
+p.text('IMAGE FILE TOO LARGE\\n')
+p.text('${sizeKB}KB (max ${Math.round(MAX_BLOB_SIZE / 1024)}KB)\\n')
+p.text('\\n')
+p.set(align='left')
+`;
+        }
+
+        // Convert blob to base64
+        const base64 = await blobToBase64(blob);
+
+        if (import.meta.env.DEV) {
+          console.log(`[Image] Generated ${base64.length} bytes of base64 data for ${width}x${height} image`);
+        }
+
+        // Generate python-escpos code with embedded image
+        const code = `from escpos.printer import Dummy
+from PIL import Image
+import io
+import base64
+
+# Create printer
+p = Dummy()
+
+try:
+    # Decode embedded image (${width}x${height} dithered)
+    img_data = base64.b64decode('''${base64}''')
+    img = Image.open(io.BytesIO(img_data))
+
+    # Center alignment for image
+    p.set(align='center')
+
+    # Print image using bitImageColumn implementation
+    # (best compatibility across thermal printer models)
+    p.image(img, impl='bitImageColumn')
+
+except Exception as e:
+    # Image processing error
+    p.text(f'Image error: {e}\\n')
+
+finally:
+    # Add spacing and reset alignment
+    p.text('\\n')
+    p.set(align='left')
+`;
+
+        return code;
+      } catch (err) {
+        console.error('[Image] Failed to generate code:', err);
+
+        // Fallback to placeholder if conversion fails
+        return `from escpos.printer import Dummy
+
+# Create printer
+p = Dummy()
+
+# Image encoding failed
+p.set(align='center')
+p.text('IMAGE (${width}x${height})\\n')
+p.text('Failed to encode image\\n')
+p.text('\\n')
+p.set(align='left')
+`;
+      }
+    },
+    [pyodide]
+  );
+
   return {
     pyodide,
     isLoading,
     error,
     runCode,
     convertBytesToCode,
+    generateImageCode,
   };
+}
+
+/**
+ * Convert ImageData to PNG blob for embedding in Python code
+ */
+function imageDataToBlob(imageData: ImageData, width: number, height: number): Promise<Blob> {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Failed to get canvas context');
+    }
+    ctx.putImageData(imageData, 0, 0);
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        throw new Error('Failed to create blob from canvas');
+      }
+    }, 'image/png');
+  });
+}
+
+/**
+ * Encode PNG blob to base64 string for embedding in Python code
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        // Extract base64 data (remove "data:image/png;base64," prefix)
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      } else {
+        reject(new Error('Failed to read blob as data URL'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Failed to read image blob'));
+    reader.readAsDataURL(blob);
+  });
 }

@@ -11,6 +11,7 @@ export type CommandType =
   | 'align'
   | 'size'
   | 'cut'
+  | 'image'
   | 'unknown';
 
 export interface Command {

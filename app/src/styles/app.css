@@ -999,3 +999,20 @@ body {
 .receipt-line.left {
   text-align: left;
 }
+
+.receipt-line:has(.receipt-image) {
+  padding: 0;
+  min-height: 0;
+  line-height: 0;
+}
+
+.receipt-image {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -ms-interpolation-mode: nearest-neighbor;
+  vertical-align: top;
+}

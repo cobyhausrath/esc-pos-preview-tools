@@ -14,6 +14,90 @@ interface ReceiptPreviewProps {
 }
 
 /**
+ * Decode ESC/POS bit image data to a data URL for display
+ *
+ * ESC * format: ESC * m nL nH [data]
+ * - Data is organized in vertical columns
+ * - Each byte represents 8 vertical pixels (bit 0 = top, bit 7 = bottom)
+ * - For 24-dot modes, 3 bytes per column (top 8, middle 8, bottom 8)
+ */
+function decodeEscPosImage(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  bytesPerColumn: number
+): string {
+  if (import.meta.env.DEV) {
+    console.log('[Image Decode]', {
+      dataLength: data.length,
+      width,
+      height,
+      bytesPerColumn,
+      expectedBytes: width * bytesPerColumn,
+    });
+  }
+
+  // Validate dimensions
+  if (width <= 0 || height <= 0) {
+    console.error('[Image Decode] Invalid dimensions:', { width, height });
+    return '';
+  }
+
+  // Create canvas for rendering
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    console.error('[Image Decode] Failed to get canvas context');
+    return '';
+  }
+
+  // Create image data
+  const imageData = ctx.createImageData(width, height);
+  const pixels = imageData.data;
+
+  // Decode bitmap data (column-major order)
+  let dataIdx = 0;
+  for (let x = 0; x < width; x++) {
+    for (let byteInCol = 0; byteInCol < bytesPerColumn; byteInCol++) {
+      if (dataIdx >= data.length) break;
+
+      const byte = data[dataIdx++];
+      const yOffset = byteInCol * 8;
+
+      // Extract 8 vertical pixels from this byte
+      // Note: bit 7 (MSB) is top, bit 0 (LSB) is bottom in ESC * format
+      for (let bit = 0; bit < 8; bit++) {
+        const y = yOffset + (7 - bit); // Reverse bit order for correct vertical orientation
+        if (y >= height) break;
+
+        const pixelOn = (byte & (1 << bit)) !== 0;
+        const pixelIdx = (y * width + x) * 4;
+
+        // Set pixel color (black if on, white if off)
+        pixels[pixelIdx] = pixelOn ? 0 : 255; // R
+        pixels[pixelIdx + 1] = pixelOn ? 0 : 255; // G
+        pixels[pixelIdx + 2] = pixelOn ? 0 : 255; // B
+        pixels[pixelIdx + 3] = 255; // A
+      }
+    }
+  }
+
+  // Put pixels on canvas
+  ctx.putImageData(imageData, 0, 0);
+
+  // Convert to data URL
+  const dataURL = canvas.toDataURL('image/png');
+
+  if (import.meta.env.DEV) {
+    console.log('[Image Decode] Generated data URL length:', dataURL.length);
+  }
+
+  return dataURL;
+}
+
+/**
  * ReceiptPreview - Display formatted ESC-POS receipt with context menu support
  *
  * This component:
@@ -136,6 +220,123 @@ export default function ReceiptPreview({
             });
             i += 3;
             continue;
+          }
+
+          // ESC ! - Print mode (size, emphasis, etc.)
+          if (cmd === 0x21 && i + 2 < bytes.length) {
+            const mode = bytes[i + 2];
+            // Note: Size changes not yet supported in preview, just consume the command
+            lineCommands.push({
+              type: 'size',
+              value: mode,
+              pythonCode: `p.set(/* mode=${mode} */)`,
+            });
+            i += 3;
+            continue;
+          }
+
+          // ESC * - Bit Image
+          if (cmd === 0x2a && i + 4 < bytes.length) {
+            const mode = bytes[i + 2];
+            const nL = bytes[i + 3];
+            const nH = bytes[i + 4];
+            const widthInPixels = nL + (nH * 256);
+
+            // Determine dots per column based on mode
+            let dotsPerColumn = 8;
+            if (mode === 0 || mode === 1) dotsPerColumn = 8;
+            else if (mode === 32 || mode === 33) dotsPerColumn = 24;
+
+            const bytesPerColumn = dotsPerColumn / 8;
+            const totalDataBytes = widthInPixels * bytesPerColumn;
+            const totalSize = 5 + totalDataBytes;
+
+            if (import.meta.env.DEV) {
+              console.log('[ESC *] Parsing image:', {
+                mode,
+                widthInPixels,
+                dotsPerColumn,
+                bytesPerColumn,
+                totalDataBytes,
+                totalSize,
+                availableBytes: bytes.length - i,
+              });
+            }
+
+            if (i + totalSize <= bytes.length) {
+              // Extract and decode image data
+              const imageData = bytes.slice(i + 5, i + totalSize);
+              const width = widthInPixels;
+              const height = dotsPerColumn;
+
+              // Decode bitmap and create data URL
+              const imageDataURL = decodeEscPosImage(imageData, width, height, bytesPerColumn);
+
+              if (import.meta.env.DEV) {
+                console.log('[ESC *] Generated data URL:', {
+                  length: imageDataURL.length,
+                  preview: imageDataURL.substring(0, 50),
+                  isEmpty: imageDataURL === '',
+                });
+              }
+
+              // Skip if data URL generation failed
+              if (!imageDataURL) {
+                if (import.meta.env.DEV) {
+                  console.error('[ESC *] Failed to generate data URL, skipping image');
+                }
+                i += totalSize;
+                continue;
+              }
+
+              // Flush current line if exists
+              if (currentLine) {
+                lines.push({
+                  text: currentLine,
+                  align: currentAlign,
+                  bold: currentBold,
+                  underline: currentUnderline,
+                  lineNumber: lineCount,
+                });
+                newCommandMap.set(lineCount, {
+                  align: currentAlign,
+                  bold: currentBold,
+                  underline: currentUnderline,
+                  commands: [...lineCommands],
+                });
+                lineCount++;
+                lineCommands = [];
+                currentLine = '';
+              }
+
+              // Add image as a special line with data URL
+              lines.push({
+                text: `__IMAGE__${imageDataURL}`,
+                align: currentAlign, // Use current alignment instead of hardcoding
+                bold: false,
+                underline: false,
+                lineNumber: lineCount,
+              });
+              lineCount++;
+
+              lineCommands.push({
+                type: 'image',
+                value: mode,
+                pythonCode: `p.image(img, impl='bitImageColumn')`,
+              });
+
+              i += totalSize;
+
+              // Skip line feed if immediately after image (avoid blank lines between strips)
+              if (i < bytes.length && bytes[i] === 0x0a) {
+                if (import.meta.env.DEV) {
+                  console.log('[ESC *] Skipping LF after image to avoid gap');
+                }
+                i++;
+              }
+
+              continue;
+            }
           }
 
           i += 2;
@@ -311,6 +512,43 @@ export default function ReceiptPreview({
         ) : escposBytes ? (
           <div className="receipt-content">
             {previewLines.map((line, index) => {
+              // Check if this is an image line
+              if (line.text && line.text.startsWith('__IMAGE__')) {
+                const imageDataURL = line.text.substring('__IMAGE__'.length);
+                return (
+                  <div
+                    key={index}
+                    className={`receipt-line ${line.align}`}
+                    data-line={line.lineNumber}
+                    data-align={line.align}
+                    onContextMenu={handleContextMenu}
+                    style={{ padding: 0, minHeight: 0, lineHeight: 0 }}
+                  >
+                    <img
+                      src={imageDataURL}
+                      alt={`Image ${index}`}
+                      className="receipt-image"
+                      style={{
+                        display: 'inline-block',
+                        maxWidth: '100%',
+                        height: 'auto',
+                        margin: 0,
+                        verticalAlign: 'top'
+                      }}
+                      onError={(e) => {
+                        if (import.meta.env.DEV) {
+                          console.error('[Image] Failed to load image:', {
+                            src: imageDataURL.substring(0, 100),
+                            index,
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+                );
+              }
+
+              // Regular text line
               const LineTag = line.bold ? 'strong' : 'span';
               const content = line.underline ? (
                 <u>
