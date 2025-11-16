@@ -50,6 +50,19 @@ export const PRINTER_PRESETS: PrinterConfig[] = [
   { name: 'Netum 80-V-UL', ip: '192.168.1.100', port: 9100 },
 ];
 
+// Printer status types
+export type PaperStatus = 'ok' | 'low' | 'out' | 'unknown';
+
+export interface PrinterStatus {
+  online: boolean;
+  paperStatus: PaperStatus;
+  coverOpen: boolean;
+  error: boolean;
+  errorMessage: string | null;
+  supported: boolean;
+  details: Record<string, boolean | number | string>;
+}
+
 // Pyodide types
 export interface PyodideInterface {
   runPythonAsync: (code: string) => Promise<unknown>;

@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
-import type { PrinterConfig } from '@/types';
+import type { PrinterConfig, PrinterStatus } from '@/types';
 
 export function usePrinterClient() {
   const [isConnected, setIsConnected] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterConfig | null>(null);
+  const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const connect = useCallback((printer: PrinterConfig) => {
@@ -39,6 +40,7 @@ export function usePrinterClient() {
 
         ws.onclose = () => {
           setIsConnected(false);
+          setPrinterStatus(null);
           wsRef.current = null;
         };
 
@@ -68,7 +70,65 @@ export function usePrinterClient() {
     }
     setIsConnected(false);
     setSelectedPrinter(null);
+    setPrinterStatus(null);
   }, []);
+
+  const queryStatus = useCallback(
+    async (printerName: string, customHost?: string, customPort?: number): Promise<PrinterStatus> => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        throw new Error('Not connected to printer bridge');
+      }
+
+      return new Promise((resolve, reject) => {
+        const request: {
+          action: string;
+          printer?: string;
+          host?: string;
+          port?: number;
+        } = {
+          action: 'status',
+        };
+
+        if (printerName === 'custom' && customHost && customPort) {
+          request.host = customHost;
+          request.port = customPort;
+        } else {
+          request.printer = printerName;
+        }
+
+        // Set up response handler
+        const handleMessage = (event: MessageEvent) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.success && message.status) {
+              const status: PrinterStatus = message.status;
+              setPrinterStatus(status);
+              wsRef.current?.removeEventListener('message', handleMessage);
+              resolve(status);
+            } else if (!message.success) {
+              wsRef.current?.removeEventListener('message', handleMessage);
+              reject(new Error(message.error || 'Status query failed'));
+            }
+          } catch (err) {
+            wsRef.current?.removeEventListener('message', handleMessage);
+            reject(err);
+          }
+        };
+
+        wsRef.current.addEventListener('message', handleMessage);
+
+        // Send request
+        wsRef.current.send(JSON.stringify(request));
+
+        // Timeout after 5 seconds
+        setTimeout(() => {
+          wsRef.current?.removeEventListener('message', handleMessage);
+          reject(new Error('Status query timeout'));
+        }, 5000);
+      });
+    },
+    []
+  );
 
   const print = useCallback(
     async (data: Uint8Array): Promise<void> => {
@@ -135,8 +195,10 @@ export function usePrinterClient() {
     isPrinting,
     error,
     selectedPrinter,
+    printerStatus,
     connect,
     disconnect,
+    queryStatus,
     print,
   };
 }
