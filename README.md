@@ -445,7 +445,8 @@ yarn bridge:dev                      # Run bridge with auto-reload
 | GS ! | 1D 21 n | Character size | ✅ |
 | LF | 0A | Line feed | ✅ |
 | GS V | 1D 56 m | Paper cut | ✅ |
-| ESC * | 1B 2A | Bit image | ⏳ Planned |
+| **GS v 0** | **1D 76 30** | **Raster image** | **✅** |
+| ESC * | 1B 2A | Bit image (column format) | ⏳ Partial |
 | GS k | 1D 6B | Barcode | ⏳ Planned |
 | GS ( k | 1D 28 6B | QR code | ⏳ Planned |
 

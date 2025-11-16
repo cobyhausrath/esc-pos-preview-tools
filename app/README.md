@@ -61,10 +61,14 @@ app/
 
 ### Editor
 - Python code editor with syntax hints
-- Real-time ESC-POS preview
+- Real-time ESC-POS preview with GS v 0 raster image support
 - Pyodide integration for python-escpos execution
 - HEX view with command statistics
 - Printer controls with WebSocket bridge
+- **Configurable printer settings:**
+  - Printer profile selection (Netum 80-V-UL, Epson TM-T88V, Generic)
+  - Image format selection (Raster GS v 0, Column ESC *, Graphics GS ( L)
+  - Custom bridge URL configuration
 - Template system (timestamp, expiry, to-do, note, image)
 - Example code library
 - Import/export ESC-POS files
@@ -157,14 +161,29 @@ Specialized hook for dashboard WebSocket connection.
 - `stats: JobStats` - Job statistics
 - `setJobs: (jobs) => void` - Update jobs list
 
-#### `usePyodide()`
+#### `usePyodide(settings?)`
 Hook for Pyodide initialization and code execution.
+
+**Parameters:**
+- `settings?: { printerProfile?: string, imageImplementation?: string }` - Printer settings
 
 **Returns:**
 - `pyodide: PyodideInterface | null` - Pyodide instance
 - `isLoading: boolean` - Loading state
 - `error: string | null` - Error message
-- `runCode: (code: string) => Promise<Uint8Array>` - Execute python-escpos code
+- `runCode: (code: string) => Promise<Uint8Array>` - Execute python-escpos code with configured profile
+- `convertBytesToCode: (bytes: Uint8Array) => Promise<string>` - Convert ESC-POS bytes to python-escpos code
+- `generateImageCode: (imageData, width, height) => Promise<string>` - Generate python-escpos image code
+
+**Supported Printer Profiles:**
+- `NT-80-V-UL` - Netum 80-V-UL (203 DPI) - Default
+- `TM-T88V` - Epson TM-T88V (180 DPI)
+- `default` - Generic (180 DPI)
+
+**Supported Image Implementations:**
+- `bitImageRaster` - GS v 0 raster format (best for Netum, eliminates gaps) - Default
+- `bitImageColumn` - ESC * column format (legacy, may have gaps)
+- `graphics` - GS ( L graphics format (modern)
 
 #### `usePrinterClient()`
 Hook for printer WebSocket bridge communication.
@@ -174,9 +193,18 @@ Hook for printer WebSocket bridge communication.
 - `isPrinting: boolean` - Printing state
 - `error: string | null` - Error message
 - `selectedPrinter: PrinterConfig | null` - Selected printer
+- `printerStatus: PrinterStatus | null` - Printer status from real-time queries
+- `bridgeUrl: string` - Current bridge URL
 - `connect: (config) => Promise<void>` - Connect to printer bridge
 - `disconnect: () => void` - Disconnect
+- `queryStatus: (printerName, customHost?, customPort?) => Promise<PrinterStatus>` - Query printer status
 - `print: (data: Uint8Array) => Promise<void>` - Send data to printer
+- `updateBridgeUrl: (url: string) => void` - Update bridge URL (persisted to localStorage)
+
+**Features:**
+- Configurable timeouts (5s for status queries, 10s for prints)
+- Bridge URL validation (warns on non-ws:// URLs)
+- Persistent bridge URL storage in localStorage
 
 ### Type Definitions
 
@@ -284,13 +312,16 @@ The React app maintains feature parity with the original HTML versions:
    - Loading screen with progress indicator
    - Service worker caching for faster subsequent loads
 
-2. **ESC-POS parsing:** Receipt preview currently shows raw text. To improve:
-   - Integrate the existing TypeScript ESC-POS parser
-   - Render formatted text with HTML (bold, underline, alignment)
+2. **Canvas rendering in tests:** The `decodeRasterImage` utility uses canvas for rendering GS v 0 raster images. Full canvas tests are limited in happy-dom test environment. Manual testing in browser is recommended for visual verification.
 
-3. **Image processing:** Image template requires browser canvas API
-   - Add Floyd-Steinberg dithering implementation
-   - Handle image resizing for thermal printers
+## Fixed Issues
+
+1. **✅ Image gaps on Netum 80-V-UL:** ESC * (bitImageColumn) format caused gaps due to ESC 3 16 line spacing (18.1 dots @ 203 DPI) vs 24-dot strips. Fixed by switching default to GS v 0 (bitImageRaster) format which handles line spacing correctly.
+
+2. **✅ GS v 0 raster image support:** Added full parsing and rendering support for GS v 0 raster images in preview, including:
+   - Correct bit order handling (bit 7 = left, bit 0 = right)
+   - Row-major bitmap decoding
+   - Subcommand validation (ASCII '0' = 0x30)
 
 ## Future Enhancements
 

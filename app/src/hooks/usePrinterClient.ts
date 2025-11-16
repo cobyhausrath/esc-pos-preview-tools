@@ -1,30 +1,36 @@
 import { useState, useCallback, useRef } from 'react';
 import type { PrinterConfig, PrinterStatus } from '@/types';
 
+// Timeout constants
+const STATUS_QUERY_TIMEOUT_MS = 5000; // 5 seconds for status queries
+const PRINT_TIMEOUT_MS = 10000; // 10 seconds for print operations
+
+// Get bridge URL from localStorage or use default
+const getDefaultBridgeUrl = (): string => {
+  return localStorage.getItem('printerBridgeUrl') || 'ws://127.0.0.1:8765';
+};
+
 export function usePrinterClient() {
   const [isConnected, setIsConnected] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterConfig | null>(null);
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
+  const [bridgeUrl, setBridgeUrl] = useState<string>(getDefaultBridgeUrl());
   const wsRef = useRef<WebSocket | null>(null);
+
+  const updateBridgeUrl = useCallback((url: string) => {
+    setBridgeUrl(url);
+    localStorage.setItem('printerBridgeUrl', url);
+  }, []);
 
   const connect = useCallback((printer: PrinterConfig) => {
     return new Promise<void>((resolve, reject) => {
       try {
-        const ws = new WebSocket('ws://127.0.0.1:8765');
+        const ws = new WebSocket(bridgeUrl);
 
         ws.onopen = () => {
-          // Send printer configuration
-          ws.send(
-            JSON.stringify({
-              type: 'configure',
-              printer: {
-                ip: printer.ip,
-                port: printer.port,
-              },
-            })
-          );
+          // Connection successful
           setIsConnected(true);
           setSelectedPrinter(printer);
           setError(null);
@@ -47,10 +53,9 @@ export function usePrinterClient() {
         ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
-            if (message.type === 'error') {
-              setError(message.message || 'Printer error');
-            } else if (message.type === 'print_complete') {
-              setIsPrinting(false);
+            // Log welcome messages and other general messages
+            if (import.meta.env.DEV && message.message) {
+              console.log('[Bridge]', message.message);
             }
           } catch (err) {
             console.error('Failed to parse message from printer bridge:', err);
@@ -61,7 +66,7 @@ export function usePrinterClient() {
         reject(err);
       }
     });
-  }, []);
+  }, [bridgeUrl]);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
@@ -120,11 +125,11 @@ export function usePrinterClient() {
         // Send request
         wsRef.current.send(JSON.stringify(request));
 
-        // Timeout after 5 seconds
+        // Timeout after configured duration
         setTimeout(() => {
           wsRef.current?.removeEventListener('message', handleMessage);
           reject(new Error('Status query timeout'));
-        }, 5000);
+        }, STATUS_QUERY_TIMEOUT_MS);
       });
     },
     []
@@ -136,34 +141,41 @@ export function usePrinterClient() {
         throw new Error('Not connected to printer bridge');
       }
 
+      if (!selectedPrinter) {
+        throw new Error('No printer selected');
+      }
+
       return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          setIsPrinting(false);
+          setError('Print timeout - printer not responding');
+          wsRef.current?.removeEventListener('message', handleMessage);
+          reject(new Error('Print timeout'));
+        }, PRINT_TIMEOUT_MS);
+
         try {
           setIsPrinting(true);
           setError(null);
-
-          // Send binary data
-          wsRef.current!.send(
-            JSON.stringify({
-              type: 'print',
-              data: Array.from(data),
-            })
-          );
 
           // Wait for confirmation
           const handleMessage = (event: MessageEvent) => {
             try {
               const message = JSON.parse(event.data);
-              if (message.type === 'print_complete') {
+              if (message.success) {
+                clearTimeout(timeoutId);
                 setIsPrinting(false);
                 wsRef.current?.removeEventListener('message', handleMessage);
                 resolve();
-              } else if (message.type === 'error') {
+              } else if (message.success === false) {
+                clearTimeout(timeoutId);
                 setIsPrinting(false);
-                setError(message.message || 'Print failed');
+                const errorMsg = message.error || 'Print failed';
+                setError(errorMsg);
                 wsRef.current?.removeEventListener('message', handleMessage);
-                reject(new Error(message.message || 'Print failed'));
+                reject(new Error(errorMsg));
               }
             } catch (err) {
+              clearTimeout(timeoutId);
               setIsPrinting(false);
               wsRef.current?.removeEventListener('message', handleMessage);
               reject(err);
@@ -172,22 +184,24 @@ export function usePrinterClient() {
 
           wsRef.current!.addEventListener('message', handleMessage);
 
-          // Timeout after 10 seconds
-          setTimeout(() => {
-            if (isPrinting) {
-              setIsPrinting(false);
-              setError('Print timeout');
-              reject(new Error('Print timeout'));
-            }
-          }, 10000);
+          // Send print request using bridge protocol
+          wsRef.current!.send(
+            JSON.stringify({
+              action: 'send',
+              host: selectedPrinter.ip,
+              port: selectedPrinter.port,
+              data: Array.from(data),
+            })
+          );
         } catch (err) {
+          clearTimeout(timeoutId);
           setIsPrinting(false);
           setError(err instanceof Error ? err.message : 'Print failed');
           reject(err);
         }
       });
     },
-    [isPrinting]
+    [selectedPrinter]
   );
 
   return {
@@ -196,9 +210,11 @@ export function usePrinterClient() {
     error,
     selectedPrinter,
     printerStatus,
+    bridgeUrl,
     connect,
     disconnect,
     queryStatus,
     print,
+    updateBridgeUrl,
   };
 }

@@ -7,7 +7,14 @@ declare global {
   }
 }
 
-export function usePyodide() {
+export interface PyodideSettings {
+  printerProfile?: string;
+  imageImplementation?: 'bitImageColumn' | 'bitImageRaster' | 'graphics';
+}
+
+export function usePyodide(settings?: PyodideSettings) {
+  const printerProfile = settings?.printerProfile || 'NT-80-V-UL';
+  const imageImplementation = settings?.imageImplementation || 'bitImageRaster';
   const [pyodide, setPyodide] = useState<PyodideInterface | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -161,8 +168,8 @@ validate_code(${JSON.stringify(code)})
           pyodide.runPythonAsync(`
 from escpos.printer import Dummy
 
-# Create a dummy printer
-p = Dummy()
+# Create a dummy printer configured for ${printerProfile}
+p = Dummy(profile='${printerProfile}')
 
 # Execute user code
 ${code}
@@ -253,8 +260,8 @@ python_code
         console.warn(`[Image] Image too large: ${width}x${height} (${pixelCount} pixels)`);
         return `from escpos.printer import Dummy
 
-# Create printer
-p = Dummy()
+# Create printer configured for ${printerProfile}
+p = Dummy(profile='${printerProfile}')
 
 # Image too large
 p.set(align='center')
@@ -292,8 +299,8 @@ await micropip.install('Pillow')
           console.warn(`[Image] Image file too large: ${sizeKB}KB`);
           return `from escpos.printer import Dummy
 
-# Create printer
-p = Dummy()
+# Create printer configured for ${printerProfile}
+p = Dummy(profile='${printerProfile}')
 
 # Image file too large
 p.set(align='center')
@@ -317,8 +324,8 @@ from PIL import Image
 import io
 import base64
 
-# Create printer
-p = Dummy()
+# Create printer configured for ${printerProfile}
+p = Dummy(profile='${printerProfile}')
 
 try:
     # Decode embedded image (${width}x${height} dithered)
@@ -328,9 +335,8 @@ try:
     # Center alignment for image
     p.set(align='center')
 
-    # Print image using bitImageColumn implementation
-    # (best compatibility across thermal printer models)
-    p.image(img, impl='bitImageColumn')
+    # Print image using ${imageImplementation} implementation
+    p.image(img, impl='${imageImplementation}')
 
 except Exception as e:
     # Image processing error
@@ -349,8 +355,8 @@ finally:
         // Fallback to placeholder if conversion fails
         return `from escpos.printer import Dummy
 
-# Create printer
-p = Dummy()
+# Create printer configured for ${printerProfile}
+p = Dummy(profile='${printerProfile}')
 
 # Image encoding failed
 p.set(align='center')
@@ -361,7 +367,7 @@ p.set(align='left')
 `;
       }
     },
-    [pyodide]
+    [pyodide, printerProfile, imageImplementation]
   );
 
   return {

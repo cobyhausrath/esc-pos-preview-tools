@@ -25,7 +25,8 @@ const http = require('http');
 // ===================================================================
 
 const DEFAULT_WS_PORT = 8765;
-const TIMEOUT = 5000; // 5 seconds
+const DEFAULT_HOST = '127.0.0.1'; // localhost only by default (secure)
+const DEFAULT_TIMEOUT = 5000; // 5 seconds
 
 // Printer database (from devices/printers.ts)
 const PRINTERS = {
@@ -51,6 +52,8 @@ function parseArgs() {
     }
 
     let wsPort = DEFAULT_WS_PORT;
+    let wsHost = DEFAULT_HOST;
+    let timeout = DEFAULT_TIMEOUT;
 
     if (args.includes('--port') || args.includes('-p')) {
         const portIndex = args.findIndex(arg => arg === '--port' || arg === '-p');
@@ -63,7 +66,30 @@ function parseArgs() {
         }
     }
 
-    return { wsPort };
+    if (args.includes('--host')) {
+        const hostIndex = args.findIndex(arg => arg === '--host');
+        if (hostIndex >= 0 && args[hostIndex + 1]) {
+            wsHost = args[hostIndex + 1];
+            // Validate host format (basic check)
+            if (!wsHost.match(/^(\d{1,3}\.){3}\d{1,3}$/) && wsHost !== 'localhost') {
+                console.error(`Error: Invalid host '${wsHost}' (use IP address or 'localhost')`);
+                process.exit(1);
+            }
+        }
+    }
+
+    if (args.includes('--timeout') || args.includes('-t')) {
+        const timeoutIndex = args.findIndex(arg => arg === '--timeout' || arg === '-t');
+        if (timeoutIndex >= 0 && args[timeoutIndex + 1]) {
+            timeout = parseInt(args[timeoutIndex + 1], 10);
+            if (isNaN(timeout) || timeout < 100 || timeout > 60000) {
+                console.error(`Error: Invalid timeout '${args[timeoutIndex + 1]}' (must be between 100-60000ms)`);
+                process.exit(1);
+            }
+        }
+    }
+
+    return { wsPort, wsHost, timeout };
 }
 
 function printHelp() {
@@ -71,18 +97,29 @@ function printHelp() {
 printer-bridge - WebSocket to TCP bridge for browser-to-printer communication
 
 USAGE:
-  printer-bridge [--port <port>]
+  printer-bridge [OPTIONS]
 
 OPTIONS:
-  -p, --port <port>    WebSocket server port (default: ${DEFAULT_WS_PORT})
-  -h, --help           Show this help
+  -p, --port <port>       WebSocket server port (default: ${DEFAULT_WS_PORT})
+      --host <host>       Bind address (default: ${DEFAULT_HOST})
+                          Use 0.0.0.0 to allow external connections
+                          WARNING: Only use 0.0.0.0 on trusted networks!
+  -t, --timeout <ms>      Printer connection timeout in ms (default: ${DEFAULT_TIMEOUT})
+                          Range: 100-60000ms
+  -h, --help              Show this help
 
 EXAMPLES:
-  # Start with default port
+  # Start with default settings (localhost only)
   printer-bridge
 
   # Start on custom port
   printer-bridge --port 9000
+
+  # Allow external connections (USE WITH CAUTION!)
+  printer-bridge --host 0.0.0.0
+
+  # Custom timeout for slow printers
+  printer-bridge --timeout 10000
 
 PROTOCOL:
   The WebSocket server accepts JSON messages:
@@ -141,10 +178,14 @@ SECURITY:
   This server should only be run on localhost for development.
   Do NOT expose this server to the internet or untrusted networks.
 
+  Using --host 0.0.0.0 allows connections from any network interface.
+  Only use this on trusted private networks, never on public networks!
+
 NOTES:
-  - Server binds to 127.0.0.1 (localhost only) for security
+  - Server binds to 127.0.0.1 (localhost only) by default for security
+  - Use --host 0.0.0.0 to allow external connections (trusted networks only)
   - CORS is not needed as WebSocket connections are from same origin
-  - Default timeout: 5 seconds per print job
+  - Timeout applies to both print jobs and status queries
 `);
 }
 
@@ -157,19 +198,20 @@ NOTES:
  * @param {string} host - Printer host
  * @param {number} port - Printer port
  * @param {Buffer} data - Data to send
+ * @param {number} timeout - Connection timeout in ms
  * @returns {Promise<{bytesSent: number}>}
  */
-function sendToSocket(host, port, data) {
+function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
     return new Promise((resolve, reject) => {
         const client = new net.Socket();
         let connected = false;
         let bytesSent = 0;
 
-        client.setTimeout(TIMEOUT);
+        client.setTimeout(timeout);
 
         client.on('timeout', () => {
             client.destroy();
-            reject({ code: 'TIMEOUT', message: `Connection timeout after ${TIMEOUT}ms` });
+            reject({ code: 'TIMEOUT', message: `Connection timeout after ${timeout}ms` });
         });
 
         client.on('error', (err) => {
@@ -261,16 +303,17 @@ function parseStatusByte(statusByte, queryType) {
  * Query printer status using ESC-POS commands
  * @param {string} host - Printer host
  * @param {number} port - Printer port
+ * @param {number} timeout - Status query timeout in ms
  * @returns {Promise<Object>} Status information
  */
-function queryPrinterStatus(host, port) {
+function queryPrinterStatus(host, port, timeout = DEFAULT_TIMEOUT) {
     return new Promise((resolve, reject) => {
         const client = new net.Socket();
         let statusResponses = [];
         let queryIndex = 0;
 
         // Constants for query timing
-        const STATUS_TIMEOUT_MS = 2000;
+        const STATUS_TIMEOUT_MS = Math.min(timeout, 2000); // Use configured timeout, max 2s per query
         const QUERY_DELAY_MS = 50;
 
         const queries = [
@@ -457,8 +500,9 @@ function queryPrinterStatus(host, port) {
  * Handle incoming WebSocket message
  * @param {WebSocket} ws - WebSocket connection
  * @param {string} message - JSON message
+ * @param {number} timeout - Printer connection timeout in ms
  */
-async function handleMessage(ws, message) {
+async function handleMessage(ws, message, timeout = DEFAULT_TIMEOUT) {
     let request;
 
     try {
@@ -517,7 +561,7 @@ async function handleMessage(ws, message) {
 
         // Send to printer
         try {
-            const result = await sendToSocket(host, port, buffer);
+            const result = await sendToSocket(host, port, buffer, timeout);
             ws.send(JSON.stringify({
                 success: true,
                 message: `Sent ${result.bytesSent} bytes to ${host}:${port}`,
@@ -556,7 +600,7 @@ async function handleMessage(ws, message) {
 
         // Query status
         try {
-            const status = await queryPrinterStatus(host, port);
+            const status = await queryPrinterStatus(host, port, timeout);
             ws.send(JSON.stringify({
                 success: true,
                 status: status
@@ -604,8 +648,10 @@ async function handleMessage(ws, message) {
 /**
  * Create and start WebSocket server
  * @param {number} port - Port to listen on
+ * @param {string} host - Host to bind to
+ * @param {number} timeout - Printer connection timeout in ms
  */
-function startServer(port) {
+function startServer(port, host, timeout) {
     // Create HTTP server for WebSocket
     const server = http.createServer((req, res) => {
         // Health check endpoint
@@ -627,7 +673,7 @@ function startServer(port) {
 
         ws.on('message', (message) => {
             console.log('Received:', message.toString().substring(0, 100));
-            handleMessage(ws, message.toString());
+            handleMessage(ws, message.toString(), timeout);
         });
 
         ws.on('close', () => {
@@ -646,20 +692,25 @@ function startServer(port) {
         }));
     });
 
-    server.listen(port, '127.0.0.1', () => {
+    server.listen(port, host, () => {
+        const securityNote = host === '0.0.0.0'
+            ? '⚠️  EXTERNAL ACCESS ENABLED ⚠️'
+            : 'localhost only (127.0.0.1)';
+
         console.log(`
 ┌─────────────────────────────────────────────┐
 │  Printer Bridge Server                      │
 ├─────────────────────────────────────────────┤
-│  WebSocket: ws://127.0.0.1:${port.toString().padEnd(19)}│
-│  Health:    http://127.0.0.1:${port}/health   │
+│  WebSocket: ws://${host}:${port.toString().padEnd(19 - host.length)}│
+│  Health:    http://${host}:${port}/health${' '.repeat(Math.max(0, 11 - host.length))}│
 ├─────────────────────────────────────────────┤
 │  Configured Printers:                       │
 ${Object.entries(PRINTERS).map(([name, p]) =>
     `│    ${name.padEnd(10)} ${p.host}:${p.port}`.padEnd(46) + '│'
 ).join('\n')}
 ├─────────────────────────────────────────────┤
-│  Security: localhost only (127.0.0.1)       │
+│  Timeout: ${timeout}ms${' '.repeat(35 - timeout.toString().length)}│
+│  Security: ${securityNote.padEnd(29)}│
 │  Press Ctrl+C to stop                       │
 └─────────────────────────────────────────────┘
 `);
@@ -682,8 +733,8 @@ ${Object.entries(PRINTERS).map(([name, p]) =>
 // ===================================================================
 
 function main() {
-    const { wsPort } = parseArgs();
-    startServer(wsPort);
+    const { wsPort, wsHost, timeout } = parseArgs();
+    startServer(wsPort, wsHost, timeout);
 }
 
 if (require.main === module) {

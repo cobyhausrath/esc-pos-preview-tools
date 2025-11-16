@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePyodide } from '@/hooks/usePyodide';
 import { usePrinterClient } from '@/hooks/usePrinterClient';
+import { useSettings } from '@/hooks/useSettings';
 import { HexFormatter } from '@/utils/hexFormatter';
 import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
 import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
@@ -13,9 +14,11 @@ import TemplateButtons from '@/components/TemplateButtons';
 import type { TemplateType, ReceiptData } from '@/types';
 
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
+const CODE_EXECUTION_DEBOUNCE_MS = 500; // Debounce delay for auto-executing code on change
 
 export default function Editor() {
-  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode, generateImageCode } = usePyodide();
+  const { settings, updateSettings } = useSettings();
+  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode, generateImageCode } = usePyodide(settings);
   const printer = usePrinterClient();
 
   const [code, setCode] = useState(DEFAULT_CODE);
@@ -98,7 +101,7 @@ export default function Editor() {
   useEffect(() => {
     const timeout = setTimeout(() => {
       executeCode();
-    }, 500);
+    }, CODE_EXECUTION_DEBOUNCE_MS);
 
     return () => clearTimeout(timeout);
   }, [executeCode]);
@@ -188,6 +191,7 @@ export default function Editor() {
     if (!receiptData.escposBytes) return;
 
     try {
+      // Send raw bytes from python-escpos - it already includes correct line spacing
       await printer.print(receiptData.escposBytes);
     } catch (err) {
       console.error('Print failed:', err);
@@ -432,6 +436,8 @@ export default function Editor() {
             printer={printer}
             onPrint={handlePrint}
             disabled={!receiptData.escposBytes}
+            settings={settings}
+            onUpdateSettings={updateSettings}
           />
 
           <button onClick={() => setShowHex(!showHex)} className="hex-toggle">

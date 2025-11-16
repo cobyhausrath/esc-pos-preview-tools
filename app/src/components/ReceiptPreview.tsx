@@ -6,6 +6,7 @@ import {
   ContextMenuPosition,
 } from '../types';
 import { ContextMenu } from './ContextMenu';
+import { decodeRasterImage } from '@/utils/rasterDecoder';
 
 interface ReceiptPreviewProps {
   escposBytes: Uint8Array | null;
@@ -96,6 +97,7 @@ function decodeEscPosImage(
 
   return dataURL;
 }
+
 
 /**
  * ReceiptPreview - Display formatted ESC-POS receipt with context menu support
@@ -376,6 +378,130 @@ export default function ReceiptPreview({
             });
             lineCount++;
             i += 3;
+            continue;
+          }
+
+          // GS v 0 - Raster Image
+          if (cmd === 0x76) {
+            // Check if we have at least the header (8 bytes)
+            if (i + 7 < bytes.length) {
+              const subCmd = bytes[i + 2];
+              const m = bytes[i + 3]; // mode
+              const xL = bytes[i + 4];
+              const xH = bytes[i + 5];
+              const yL = bytes[i + 6];
+              const yH = bytes[i + 7];
+              const widthBytes = xL + (xH * 256);
+              const heightDots = yL + (yH * 256);
+              const totalDataBytes = widthBytes * heightDots;
+              const totalSize = 8 + totalDataBytes;
+
+              if (import.meta.env.DEV) {
+                console.log('[GS v 0] Parsing raster image:', {
+                  subCmd,
+                  mode: m,
+                  widthBytes,
+                  heightDots,
+                  totalDataBytes,
+                  totalSize,
+                  availableBytes: bytes.length - i,
+                });
+              }
+
+              // Validate subcommand for raster format
+              // ESC/POS spec: GS v '0' uses ASCII character '0' (0x30), not binary 0x00
+              if (subCmd !== 0x30) {
+                if (import.meta.env.DEV) {
+                  console.warn('[GS v] Unsupported subcommand, skipping header only:', subCmd, `(0x${subCmd.toString(16)})`);
+                }
+                i += 8; // Skip 8-byte header only
+                continue;
+              }
+
+              // Check if we have full command data
+              if (i + totalSize <= bytes.length) {
+                // Extract and decode raster image data
+                const imageData = bytes.slice(i + 8, i + totalSize);
+
+                // Decode bitmap and create data URL
+                const imageDataURL = decodeRasterImage(imageData, widthBytes, heightDots);
+
+                if (import.meta.env.DEV) {
+                  console.log('[GS v 0] Generated data URL:', {
+                    length: imageDataURL.length,
+                    preview: imageDataURL.substring(0, 50),
+                    isEmpty: imageDataURL === '',
+                  });
+                }
+
+                // Skip if data URL generation failed
+                if (!imageDataURL) {
+                  if (import.meta.env.DEV) {
+                    console.error('[GS v 0] Failed to generate data URL, skipping entire command');
+                  }
+                  i += totalSize;
+                  continue;
+                }
+
+                // Flush current line if exists
+                if (currentLine) {
+                  lines.push({
+                    text: currentLine,
+                    align: currentAlign,
+                    bold: currentBold,
+                    underline: currentUnderline,
+                    lineNumber: lineCount,
+                  });
+                  newCommandMap.set(lineCount, {
+                    align: currentAlign,
+                    bold: currentBold,
+                    underline: currentUnderline,
+                    commands: [...lineCommands],
+                  });
+                  lineCount++;
+                  lineCommands = [];
+                  currentLine = '';
+                }
+
+                // Add image as a special line with data URL
+                lines.push({
+                  text: `__IMAGE__${imageDataURL}`,
+                  align: currentAlign,
+                  bold: false,
+                  underline: false,
+                  lineNumber: lineCount,
+                });
+                lineCount++;
+
+                lineCommands.push({
+                  type: 'image',
+                  value: m,
+                  pythonCode: `p.image(img, impl='bitImageRaster')`,
+                });
+
+                i += totalSize;
+
+                // Skip line feed if immediately after image (avoid blank lines between strips)
+                if (i < bytes.length && bytes[i] === 0x0a) {
+                  if (import.meta.env.DEV) {
+                    console.log('[GS v 0] Skipping LF after image to avoid gap');
+                  }
+                  i++;
+                }
+
+                continue;
+              } else {
+                // Not enough data - this is likely truncated/incomplete
+                // Only skip the 8-byte header to avoid over-skipping
+                if (import.meta.env.DEV) {
+                  console.warn('[GS v 0] Incomplete data - need', totalSize, 'bytes but only have', bytes.length - i, 'remaining. Skipping header only.');
+                }
+                i += 8;
+                continue;
+              }
+            }
+            // Not enough bytes for header, treat as unknown GS command
+            i += 2;
             continue;
           }
 
