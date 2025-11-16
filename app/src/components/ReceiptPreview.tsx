@@ -27,12 +27,31 @@ function decodeEscPosImage(
   height: number,
   bytesPerColumn: number
 ): string {
+  if (import.meta.env.DEV) {
+    console.log('[Image Decode]', {
+      dataLength: data.length,
+      width,
+      height,
+      bytesPerColumn,
+      expectedBytes: width * bytesPerColumn,
+    });
+  }
+
+  // Validate dimensions
+  if (width <= 0 || height <= 0) {
+    console.error('[Image Decode] Invalid dimensions:', { width, height });
+    return '';
+  }
+
   // Create canvas for rendering
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
+  if (!ctx) {
+    console.error('[Image Decode] Failed to get canvas context');
+    return '';
+  }
 
   // Create image data
   const imageData = ctx.createImageData(width, height);
@@ -68,7 +87,13 @@ function decodeEscPosImage(
   ctx.putImageData(imageData, 0, 0);
 
   // Convert to data URL
-  return canvas.toDataURL('image/png');
+  const dataURL = canvas.toDataURL('image/png');
+
+  if (import.meta.env.DEV) {
+    console.log('[Image Decode] Generated data URL length:', dataURL.length);
+  }
+
+  return dataURL;
 }
 
 /**
@@ -214,7 +239,7 @@ export default function ReceiptPreview({
             const mode = bytes[i + 2];
             const nL = bytes[i + 3];
             const nH = bytes[i + 4];
-            const widthInBytes = nL + (nH * 256);
+            const widthInPixels = nL + (nH * 256);
 
             // Determine dots per column based on mode
             let dotsPerColumn = 8;
@@ -222,13 +247,25 @@ export default function ReceiptPreview({
             else if (mode === 32 || mode === 33) dotsPerColumn = 24;
 
             const bytesPerColumn = dotsPerColumn / 8;
-            const totalDataBytes = widthInBytes;
+            const totalDataBytes = widthInPixels * bytesPerColumn;
             const totalSize = 5 + totalDataBytes;
+
+            if (import.meta.env.DEV) {
+              console.log('[ESC *] Parsing image:', {
+                mode,
+                widthInPixels,
+                dotsPerColumn,
+                bytesPerColumn,
+                totalDataBytes,
+                totalSize,
+                availableBytes: bytes.length - i,
+              });
+            }
 
             if (i + totalSize <= bytes.length) {
               // Extract and decode image data
               const imageData = bytes.slice(i + 5, i + totalSize);
-              const width = widthInBytes / bytesPerColumn;
+              const width = widthInPixels;
               const height = dotsPerColumn;
 
               // Decode bitmap and create data URL
