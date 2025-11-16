@@ -276,7 +276,17 @@ export default function ReceiptPreview({
                 console.log('[ESC *] Generated data URL:', {
                   length: imageDataURL.length,
                   preview: imageDataURL.substring(0, 50),
+                  isEmpty: imageDataURL === '',
                 });
+              }
+
+              // Skip if data URL generation failed
+              if (!imageDataURL) {
+                if (import.meta.env.DEV) {
+                  console.error('[ESC *] Failed to generate data URL, skipping image');
+                }
+                i += totalSize;
+                continue;
               }
 
               // Flush current line if exists
@@ -316,6 +326,15 @@ export default function ReceiptPreview({
               });
 
               i += totalSize;
+
+              // Skip line feed if immediately after image (avoid blank lines between strips)
+              if (i < bytes.length && bytes[i] === 0x0a) {
+                if (import.meta.env.DEV) {
+                  console.log('[ESC *] Skipping LF after image to avoid gap');
+                }
+                i++;
+              }
+
               continue;
             }
           }
