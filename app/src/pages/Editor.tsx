@@ -185,14 +185,15 @@ export default function Editor() {
   };
 
   /**
-   * Fix image gaps by ensuring correct line spacing before images
-   * ESC 3 n sets line spacing to n/180 inch
-   * For 24-dot images, we need 24/180 inch line spacing
+   * Remove line feeds after ESC * image commands to prevent gaps
+   *
+   * According to the printer manual: "After printing a bit image, the printer
+   * returns to normal data processing mode" - meaning it has already advanced
+   * the paper. Line feeds after image commands cause extra gaps.
    */
-  const fixImageLineSpacing = (bytes: Uint8Array): Uint8Array => {
+  const removeImageGaps = (bytes: Uint8Array): Uint8Array => {
     const result: number[] = [];
     let i = 0;
-    let lastWasImage = false;
 
     while (i < bytes.length) {
       const byte = bytes[i];
@@ -215,48 +216,38 @@ export default function Editor() {
           const totalDataBytes = widthInPixels * bytesPerColumn;
           const totalSize = 5 + totalDataBytes;
 
-          // Insert ESC 3 n to set line spacing before first image strip
-          if (!lastWasImage && dotsPerColumn === 24) {
-            result.push(0x1b, 0x33, 24); // ESC 3 24 - set 24/180" line spacing
-            if (import.meta.env.DEV) {
-              console.log('[Print] Setting line spacing to 24 dots for image');
-            }
-          }
-
           // Copy the entire ESC * command
           for (let j = 0; j < totalSize && i < bytes.length; j++) {
             result.push(bytes[i++]);
           }
 
-          lastWasImage = true;
+          // Check if next byte is LF (0x0A)
+          if (i < bytes.length && bytes[i] === 0x0a) {
+            // Look ahead to see if another image follows
+            const hasMoreImages =
+              i + 1 < bytes.length &&
+              bytes[i + 1] === 0x1b &&
+              i + 2 < bytes.length &&
+              bytes[i + 2] === 0x2a;
+
+            if (hasMoreImages) {
+              // Skip LF between image strips
+              if (import.meta.env.DEV) {
+                console.log('[Print] Removing LF between image strips');
+              }
+              i++; // Skip the LF
+            } else {
+              // Keep LF after last image strip (for spacing after image)
+              result.push(bytes[i++]);
+            }
+          }
+
           continue;
         }
       }
 
-      // If we hit a non-image command after images, reset line spacing
-      if (lastWasImage && byte === 0x1b && i + 1 < bytes.length) {
-        const cmd = bytes[i + 1];
-        // If it's not another image command, reset line spacing
-        if (cmd !== 0x2a) {
-          result.push(0x1b, 0x32); // ESC 2 - reset to default line spacing
-          if (import.meta.env.DEV) {
-            console.log('[Print] Resetting line spacing to default');
-          }
-          lastWasImage = false;
-        }
-      } else if (lastWasImage && byte !== 0x0a && byte !== 0x1b) {
-        // Non-LF, non-ESC after image - reset spacing
-        result.push(0x1b, 0x32); // ESC 2
-        lastWasImage = false;
-      }
-
       result.push(byte);
       i++;
-    }
-
-    // Reset line spacing at end if we ended with images
-    if (lastWasImage) {
-      result.push(0x1b, 0x32); // ESC 2
     }
 
     return new Uint8Array(result);
@@ -266,8 +257,8 @@ export default function Editor() {
     if (!receiptData.escposBytes) return;
 
     try {
-      // Fix line spacing for images to prevent gaps
-      const processedBytes = fixImageLineSpacing(receiptData.escposBytes);
+      // Remove gaps between image strips before printing
+      const processedBytes = removeImageGaps(receiptData.escposBytes);
       await printer.print(processedBytes);
     } catch (err) {
       console.error('Print failed:', err);
