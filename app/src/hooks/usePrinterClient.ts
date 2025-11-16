@@ -1,18 +1,29 @@
 import { useState, useCallback, useRef } from 'react';
 import type { PrinterConfig, PrinterStatus } from '@/types';
 
+// Get bridge URL from localStorage or use default
+const getDefaultBridgeUrl = (): string => {
+  return localStorage.getItem('printerBridgeUrl') || 'ws://127.0.0.1:8765';
+};
+
 export function usePrinterClient() {
   const [isConnected, setIsConnected] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPrinter, setSelectedPrinter] = useState<PrinterConfig | null>(null);
   const [printerStatus, setPrinterStatus] = useState<PrinterStatus | null>(null);
+  const [bridgeUrl, setBridgeUrl] = useState<string>(getDefaultBridgeUrl());
   const wsRef = useRef<WebSocket | null>(null);
+
+  const updateBridgeUrl = useCallback((url: string) => {
+    setBridgeUrl(url);
+    localStorage.setItem('printerBridgeUrl', url);
+  }, []);
 
   const connect = useCallback((printer: PrinterConfig) => {
     return new Promise<void>((resolve, reject) => {
       try {
-        const ws = new WebSocket('ws://127.0.0.1:8765');
+        const ws = new WebSocket(bridgeUrl);
 
         ws.onopen = () => {
           // Send printer configuration
@@ -61,7 +72,7 @@ export function usePrinterClient() {
         reject(err);
       }
     });
-  }, []);
+  }, [bridgeUrl]);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
@@ -196,9 +207,11 @@ export function usePrinterClient() {
     error,
     selectedPrinter,
     printerStatus,
+    bridgeUrl,
     connect,
     disconnect,
     queryStatus,
     print,
+    updateBridgeUrl,
   };
 }

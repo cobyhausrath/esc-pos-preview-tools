@@ -9,9 +9,11 @@ interface PrinterControlsProps {
     error: string | null;
     selectedPrinter: PrinterConfig | null;
     printerStatus: PrinterStatus | null;
+    bridgeUrl: string;
     connect: (config: PrinterConfig) => Promise<void>;
     disconnect: () => void;
     queryStatus: (printerName: string, customHost?: string, customPort?: number) => Promise<PrinterStatus>;
+    updateBridgeUrl: (url: string) => void;
   };
   onPrint: () => void;
   disabled: boolean;
@@ -22,6 +24,8 @@ export default function PrinterControls({ printer, onPrint, disabled }: PrinterC
   const [customPort, setCustomPort] = useState(9100);
   const [selectedPreset, setSelectedPreset] = useState(0);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [bridgeUrlInput, setBridgeUrlInput] = useState(printer.bridgeUrl);
 
   const handleConnect = async () => {
     const config =
@@ -76,12 +80,45 @@ export default function PrinterControls({ printer, onPrint, disabled }: PrinterC
     return 'Online';
   };
 
+  const handleBridgeUrlUpdate = () => {
+    printer.updateBridgeUrl(bridgeUrlInput);
+  };
+
   return (
     <div className="printer-controls">
       <h3>Printer Controls</h3>
 
       {!printer.isConnected ? (
         <div className="connection-form">
+          {/* Advanced Settings - Bridge URL */}
+          <div className="form-group">
+            <button
+              type="button"
+              className="template-button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              style={{ width: '100%', marginBottom: '0.5rem' }}
+            >
+              {showAdvanced ? '▼' : '▶'} Advanced Settings
+            </button>
+          </div>
+
+          {showAdvanced && (
+            <div className="form-group" style={{ background: 'var(--bg-tertiary)', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
+              <label>Printer Bridge URL</label>
+              <input
+                type="text"
+                value={bridgeUrlInput}
+                onChange={(e) => setBridgeUrlInput(e.target.value)}
+                onBlur={handleBridgeUrlUpdate}
+                placeholder="ws://127.0.0.1:8765"
+              />
+              <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                WebSocket URL for printer bridge server.
+                Use ws:// for HTTP sites, wss:// for HTTPS sites.
+              </small>
+            </div>
+          )}
+
           <div className="form-group">
             <label>Printer Preset</label>
             <select
