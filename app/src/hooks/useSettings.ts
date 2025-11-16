@@ -4,12 +4,24 @@ export interface PrinterSettings {
   printerProfile: string;
   imageImplementation: 'bitImageColumn' | 'bitImageRaster' | 'graphics';
   autoCheckStatus: boolean;
+  statusCheckInterval: number; // seconds, 0 = disabled
+  autoConnect: boolean;
+  autoCut: boolean;
+  lastPrinterConfig: {
+    name: string;
+    ip: string;
+    port: number;
+  } | null;
 }
 
 const DEFAULT_SETTINGS: PrinterSettings = {
   printerProfile: 'NT-80-V-UL',
   imageImplementation: 'bitImageRaster',
   autoCheckStatus: true,
+  statusCheckInterval: 5, // Check every 5 seconds
+  autoConnect: false,
+  autoCut: true,
+  lastPrinterConfig: null,
 };
 
 const STORAGE_KEY = 'escpos-printer-settings';

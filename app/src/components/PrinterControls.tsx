@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { PrinterConfig, PrinterStatus } from '@/types';
 import type { PrinterSettings } from '@/hooks/useSettings';
 import { PRINTER_PRESETS } from '@/types';
@@ -14,6 +14,8 @@ interface PrinterControlsProps {
     connect: (config: PrinterConfig) => Promise<void>;
     disconnect: () => void;
     queryStatus: (printerName: string, customHost?: string, customPort?: number) => Promise<PrinterStatus>;
+    feedPaper: (lines?: number) => Promise<void>;
+    cutPaper: (partial?: boolean) => Promise<void>;
     updateBridgeUrl: (url: string) => void;
   };
   onPrint: () => void;
@@ -29,6 +31,45 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [bridgeUrlInput, setBridgeUrlInput] = useState(printer.bridgeUrl);
+  const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-connect on mount
+  useEffect(() => {
+    if (settings.autoConnect && settings.lastPrinterConfig && !printer.isConnected) {
+      const config = settings.lastPrinterConfig;
+      printer.connect(config).then(() => {
+        if (settings.autoCheckStatus) {
+          handleCheckStatus(config);
+        }
+      }).catch(err => {
+        console.error('Auto-connect failed:', err);
+      });
+    }
+  }, []); // Only run on mount
+
+  // Periodic status checking
+  useEffect(() => {
+    if (printer.isConnected && settings.statusCheckInterval > 0) {
+      // Start interval
+      statusIntervalRef.current = setInterval(() => {
+        handleCheckStatus();
+      }, settings.statusCheckInterval * 1000);
+
+      return () => {
+        if (statusIntervalRef.current) {
+          clearInterval(statusIntervalRef.current);
+          statusIntervalRef.current = null;
+        }
+      };
+    } else {
+      // Clear interval if disconnected or disabled
+      if (statusIntervalRef.current) {
+        clearInterval(statusIntervalRef.current);
+        statusIntervalRef.current = null;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printer.isConnected, settings.statusCheckInterval]); // handleCheckStatus intentionally omitted
 
   const handleConnect = async () => {
     const config =
@@ -38,6 +79,8 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
 
     try {
       await printer.connect(config);
+      // Save last printer config for auto-connect
+      onUpdateSettings({ lastPrinterConfig: config });
       // Automatically check status after connection if enabled
       // Pass the config directly since state might not be updated yet
       if (settings.autoCheckStatus) {
@@ -98,6 +141,37 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
       // Still allow the update - user might be correcting it
     }
     printer.updateBridgeUrl(bridgeUrlInput);
+  };
+
+  const handleFeedPaper = async () => {
+    try {
+      await printer.feedPaper(3); // Feed 3 lines
+    } catch (err) {
+      console.error('Feed paper failed:', err);
+    }
+  };
+
+  const handleCutPaper = async () => {
+    try {
+      await printer.cutPaper(false); // Full cut
+    } catch (err) {
+      console.error('Cut paper failed:', err);
+    }
+  };
+
+  const handlePrintWithAutoCut = async () => {
+    onPrint();
+    // If auto-cut is enabled, cut after print
+    if (settings.autoCut) {
+      // Wait a bit for print to finish
+      setTimeout(async () => {
+        try {
+          await printer.cutPaper(false);
+        } catch (err) {
+          console.error('Auto-cut failed:', err);
+        }
+      }, 500);
+    }
   };
 
   return (
@@ -169,14 +243,59 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
+                    checked={settings.autoConnect}
+                    onChange={(e) => onUpdateSettings({ autoConnect: e.target.checked })}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>Auto-connect to last printer</span>
+                </label>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  Automatically connect when page loads
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
                     checked={settings.autoCheckStatus}
                     onChange={(e) => onUpdateSettings({ autoCheckStatus: e.target.checked })}
                     style={{ cursor: 'pointer' }}
                   />
-                  <span>Auto-check printer status on connect</span>
+                  <span>Auto-check status on connect</span>
                 </label>
                 <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
-                  Automatically query printer status when connecting
+                  Query printer status when connecting
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label>Status check interval (seconds)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="60"
+                  value={settings.statusCheckInterval}
+                  onChange={(e) => onUpdateSettings({ statusCheckInterval: parseInt(e.target.value) || 0 })}
+                  placeholder="5"
+                />
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  How often to check status while connected (0 = disabled)
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.autoCut}
+                    onChange={(e) => onUpdateSettings({ autoCut: e.target.checked })}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>Auto-cut after print</span>
+                </label>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  Automatically cut paper after printing
                 </small>
               </div>
             </div>
@@ -250,24 +369,63 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
           <div className="action-buttons">
             <button
               className="status-button secondary"
-              onClick={handleCheckStatus}
+              onClick={() => handleCheckStatus()}
               disabled={isCheckingStatus}
               title="Check printer status"
             >
               {isCheckingStatus ? '⏳' : '🔍'} Status
             </button>
             <button
-              className="print-button"
-              onClick={onPrint}
-              disabled={disabled || printer.isPrinting || (printer.printerStatus?.error ?? false)}
-              title={
-                printer.printerStatus?.error
-                  ? `Cannot print: ${printer.printerStatus.errorMessage}`
-                  : 'Print to thermal printer'
-              }
+              className="feed-button secondary"
+              onClick={handleFeedPaper}
+              disabled={printer.isPrinting}
+              title="Feed paper (3 lines)"
             >
-              {printer.isPrinting ? 'Printing...' : 'Print'}
+              📄 Feed
             </button>
+            <button
+              className="cut-button secondary"
+              onClick={handleCutPaper}
+              disabled={printer.isPrinting}
+              title="Cut paper"
+            >
+              ✂️ Cut
+            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                className="print-button"
+                onClick={handlePrintWithAutoCut}
+                disabled={disabled || printer.isPrinting || (printer.printerStatus?.error ?? false)}
+                title={
+                  printer.printerStatus?.error
+                    ? `Cannot print: ${printer.printerStatus.errorMessage}`
+                    : settings.autoCut
+                    ? 'Print and auto-cut'
+                    : 'Print to thermal printer'
+                }
+              >
+                {printer.isPrinting ? 'Printing...' : 'Print'}
+              </button>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  whiteSpace: 'nowrap'
+                }}
+                title="Automatically cut paper after printing"
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.autoCut}
+                  onChange={(e) => onUpdateSettings({ autoCut: e.target.checked })}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span>Auto-cut</span>
+              </label>
+            </div>
             <button className="disconnect-button" onClick={printer.disconnect}>
               Disconnect
             </button>

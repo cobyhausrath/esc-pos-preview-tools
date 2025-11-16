@@ -141,7 +141,7 @@ export function usePrinterClient() {
     []
   );
 
-  const print = useCallback(
+  const sendRawData = useCallback(
     async (data: Uint8Array): Promise<void> => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         throw new Error('Not connected to printer bridge');
@@ -210,6 +210,31 @@ export function usePrinterClient() {
     [selectedPrinter]
   );
 
+  const print = useCallback(
+    async (data: Uint8Array): Promise<void> => {
+      return sendRawData(data);
+    },
+    [sendRawData]
+  );
+
+  const feedPaper = useCallback(
+    async (lines: number = 3): Promise<void> => {
+      // ESC d n - Print and feed n lines
+      const command = new Uint8Array([0x1B, 0x64, lines]);
+      return sendRawData(command);
+    },
+    [sendRawData]
+  );
+
+  const cutPaper = useCallback(
+    async (partial: boolean = false): Promise<void> => {
+      // GS V m - Cut paper (m=0: full cut, m=1: partial cut)
+      const command = new Uint8Array([0x1D, 0x56, partial ? 1 : 0]);
+      return sendRawData(command);
+    },
+    [sendRawData]
+  );
+
   return {
     isConnected,
     isPrinting,
@@ -221,6 +246,8 @@ export function usePrinterClient() {
     disconnect,
     queryStatus,
     print,
+    feedPaper,
+    cutPaper,
     updateBridgeUrl,
   };
 }
