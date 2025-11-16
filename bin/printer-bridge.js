@@ -589,17 +589,21 @@ async function handleMessage(ws, message, timeout = DEFAULT_TIMEOUT) {
         // Send to printer
         try {
             const result = await sendToSocket(host, port, buffer, timeout);
-            ws.send(JSON.stringify({
+            const response = {
                 success: true,
                 message: `Sent ${result.bytesSent} bytes to ${host}:${port}`,
                 bytesSent: result.bytesSent
-            }));
+            };
+            console.log(`[Send] Success: ${result.bytesSent} bytes sent to ${host}:${port}`);
+            ws.send(JSON.stringify(response));
         } catch (error) {
-            ws.send(JSON.stringify({
+            const errorResponse = {
                 success: false,
                 error: error.message,
                 code: error.code || 'UNKNOWN_ERROR'
-            }));
+            };
+            console.log(`[Send] Error: ${error.message} (${error.code})`);
+            ws.send(JSON.stringify(errorResponse));
         }
 
         return;
