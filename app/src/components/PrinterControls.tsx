@@ -38,8 +38,10 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
 
     try {
       await printer.connect(config);
-      // Automatically check status after connection
-      await handleCheckStatus();
+      // Automatically check status after connection if enabled
+      if (settings.autoCheckStatus) {
+        await handleCheckStatus();
+      }
     } catch (err) {
       console.error('Connection failed:', err);
     }
@@ -154,6 +156,21 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
                 </select>
                 <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
                   Raster format eliminates gaps on Netum 80-V-UL
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={settings.autoCheckStatus}
+                    onChange={(e) => onUpdateSettings({ autoCheckStatus: e.target.checked })}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>Auto-check printer status on connect</span>
+                </label>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  Automatically query printer status when connecting
                 </small>
               </div>
             </div>

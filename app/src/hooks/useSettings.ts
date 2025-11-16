@@ -3,11 +3,13 @@ import { useState, useCallback } from 'react';
 export interface PrinterSettings {
   printerProfile: string;
   imageImplementation: 'bitImageColumn' | 'bitImageRaster' | 'graphics';
+  autoCheckStatus: boolean;
 }
 
 const DEFAULT_SETTINGS: PrinterSettings = {
   printerProfile: 'NT-80-V-UL',
   imageImplementation: 'bitImageRaster',
+  autoCheckStatus: true,
 };
 
 const STORAGE_KEY = 'escpos-printer-settings';

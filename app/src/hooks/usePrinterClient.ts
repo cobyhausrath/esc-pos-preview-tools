@@ -94,9 +94,15 @@ export function usePrinterClient() {
           action: 'status',
         };
 
-        if (printerName === 'custom' && customHost && customPort) {
+        // Always send host and port for reliability
+        // This ensures status queries work even if printer name doesn't match bridge config
+        if (customHost && customPort) {
           request.host = customHost;
           request.port = customPort;
+          // Also send printer name as fallback if it matches a known preset
+          if (printerName !== 'custom') {
+            request.printer = printerName;
+          }
         } else {
           request.printer = printerName;
         }
