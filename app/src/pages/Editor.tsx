@@ -10,7 +10,6 @@ import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
 import PrinterControls from '@/components/PrinterControls';
-import Settings from '@/components/Settings';
 import TemplateButtons from '@/components/TemplateButtons';
 import type { TemplateType, ReceiptData } from '@/types';
 
@@ -511,9 +510,9 @@ export default function Editor() {
             printer={printer}
             onPrint={handlePrint}
             disabled={!receiptData.escposBytes}
+            settings={settings}
+            onUpdateSettings={updateSettings}
           />
-
-          <Settings settings={settings} onUpdate={updateSettings} />
 
           <button onClick={() => setShowHex(!showHex)} className="hex-toggle">
             {showHex ? 'Hide' : 'Show'} HEX View

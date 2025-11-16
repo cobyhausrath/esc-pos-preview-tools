@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { PrinterConfig, PrinterStatus } from '@/types';
+import type { PrinterSettings } from '@/hooks/useSettings';
 import { PRINTER_PRESETS } from '@/types';
 
 interface PrinterControlsProps {
@@ -17,9 +18,11 @@ interface PrinterControlsProps {
   };
   onPrint: () => void;
   disabled: boolean;
+  settings: PrinterSettings;
+  onUpdateSettings: (updates: Partial<PrinterSettings>) => void;
 }
 
-export default function PrinterControls({ printer, onPrint, disabled }: PrinterControlsProps) {
+export default function PrinterControls({ printer, onPrint, disabled, settings, onUpdateSettings }: PrinterControlsProps) {
   const [customIp, setCustomIp] = useState('192.168.1.100');
   const [customPort, setCustomPort] = useState(9100);
   const [selectedPreset, setSelectedPreset] = useState(0);
@@ -103,19 +106,51 @@ export default function PrinterControls({ printer, onPrint, disabled }: PrinterC
           </div>
 
           {showAdvanced && (
-            <div className="form-group" style={{ background: 'var(--bg-tertiary)', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
-              <label>Printer Bridge URL</label>
-              <input
-                type="text"
-                value={bridgeUrlInput}
-                onChange={(e) => setBridgeUrlInput(e.target.value)}
-                onBlur={handleBridgeUrlUpdate}
-                placeholder="ws://127.0.0.1:8765"
-              />
-              <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
-                WebSocket URL for printer bridge server.
-                Use ws:// for HTTP sites, wss:// for HTTPS sites.
-              </small>
+            <div style={{ background: 'var(--bg-tertiary)', padding: '1rem', borderRadius: '4px', marginBottom: '1rem' }}>
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label>Printer Bridge URL</label>
+                <input
+                  type="text"
+                  value={bridgeUrlInput}
+                  onChange={(e) => setBridgeUrlInput(e.target.value)}
+                  onBlur={handleBridgeUrlUpdate}
+                  placeholder="ws://127.0.0.1:8765"
+                />
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  WebSocket URL for printer bridge server.
+                  Use ws:// for HTTP sites, wss:// for HTTPS sites.
+                </small>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label>Printer Profile</label>
+                <select
+                  value={settings.printerProfile}
+                  onChange={(e) => onUpdateSettings({ printerProfile: e.target.value })}
+                >
+                  <option value="NT-80-V-UL">Netum 80-V-UL (203 DPI)</option>
+                  <option value="TM-T88V">Epson TM-T88V (180 DPI)</option>
+                  <option value="default">Generic (180 DPI)</option>
+                </select>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  Controls DPI and printer-specific ESC/POS commands
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label>Image Format</label>
+                <select
+                  value={settings.imageImplementation}
+                  onChange={(e) => onUpdateSettings({ imageImplementation: e.target.value as PrinterSettings['imageImplementation'] })}
+                >
+                  <option value="bitImageRaster">Raster (GS v 0) - Best for Netum</option>
+                  <option value="bitImageColumn">Column (ESC *) - Legacy</option>
+                  <option value="graphics">Graphics (GS ( L) - Modern</option>
+                </select>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  Raster format eliminates gaps on Netum 80-V-UL
+                </small>
+              </div>
             </div>
           )}
 

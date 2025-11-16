@@ -134,21 +134,23 @@ export class CommandParser {
           pos += 3;
         } else if (nextByte === 0x76) {
           // GS v 0 - Print raster bit image
-          if (pos + 6 < buffer.length) {
-            const m = buffer[pos + 2]; // mode (0 = normal, 1 = double width, 2 = double height, 3 = quadruple)
-            const xL = buffer[pos + 3];
-            const xH = buffer[pos + 4];
-            const yL = buffer[pos + 5];
-            const yH = buffer[pos + 6];
-            const width = xL + (xH * 256);
-            const height = yL + (yH * 256);
-            const dataBytes = width * height;
-            const totalSize = 7 + dataBytes;
+          // Format: GS v 0 m xL xH yL yH [data...]
+          if (pos + 7 < buffer.length) {
+            const subCmd = buffer[pos + 2]; // Should be 0 for raster format
+            const m = buffer[pos + 3]; // mode (0 = normal, 1 = double width, 2 = double height, 3 = quadruple)
+            const xL = buffer[pos + 4];
+            const xH = buffer[pos + 5];
+            const yL = buffer[pos + 6];
+            const yH = buffer[pos + 7];
+            const widthBytes = xL + (xH * 256); // width in bytes
+            const heightDots = yL + (yH * 256); // height in dots
+            const dataBytes = widthBytes * heightDots;
+            const totalSize = 8 + dataBytes;
 
             if (pos + totalSize <= buffer.length) {
               commands.push({
                 type: 'image',
-                value: `raster ${width}x${height}, mode ${m}`,
+                value: `raster ${widthBytes * 8}x${heightDots}px, mode ${m}`,
                 raw: Array.from(buffer.subarray(pos, pos + totalSize)),
               });
               pos += totalSize;
