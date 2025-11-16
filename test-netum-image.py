@@ -84,30 +84,45 @@ def test_printer_direct():
         img.save(img_path)
         print(f"✓ Test image saved to: {img_path}")
 
-        # Print with bitImageColumn (best compatibility)
-        print("\nPrinting test image with bitImageColumn implementation...")
-        p.set(align='center')
-        p.text("=" * 48 + "\n")
-        p.text("NETUM 80-V-UL IMAGE TEST\n")
-        p.text("=" * 48 + "\n\n")
+        # Test all three image implementations
+        implementations = [
+            ('bitImageColumn', 'ESC * column format'),
+            ('bitImageRaster', 'GS v 0 raster format'),
+            ('graphics', 'GS ( L graphics format'),
+        ]
 
-        p.image(img, impl='bitImageColumn')
+        for impl, desc in implementations:
+            print(f"\n{'='*60}")
+            print(f"Testing implementation: {impl}")
+            print(f"Description: {desc}")
+            print(f"{'='*60}")
 
-        p.text("\n")
-        p.text("=" * 48 + "\n")
-        p.text("If you see continuous horizontal\n")
-        p.text("lines with no gaps, the printer\n")
-        p.text("is working correctly.\n")
-        p.text("=" * 48 + "\n\n")
+            p.set(align='center')
+            p.text("=" * 48 + "\n")
+            p.text(f"TEST: {impl}\n")
+            p.text(f"{desc}\n")
+            p.text("=" * 48 + "\n\n")
+
+            try:
+                p.image(img, impl=impl)
+                print(f"✓ {impl} sent successfully")
+            except Exception as e:
+                print(f"✗ {impl} failed: {e}")
+                p.text(f"ERROR: {impl} failed\n")
+
+            p.text("\n")
+            p.text("Check for gaps between\n")
+            p.text("horizontal lines\n")
+            p.text("=" * 48 + "\n\n\n")
 
         # Cut paper
         p.cut()
 
-        print("✓ Print job sent successfully")
+        print("\n✓ All tests sent successfully")
         print("\nCheck the printed output:")
-        print("  - Horizontal lines should be CONTINUOUS (no gaps)")
-        print("  - Vertical lines should align across strips")
-        print("  - Strip numbers should be readable")
+        print("  - Compare all 3 implementations")
+        print("  - Look for the one with NO gaps between horizontal lines")
+        print("  - That's the implementation we should use")
 
         # Close connection
         p.close()
@@ -126,53 +141,79 @@ def test_printer_with_raw_output():
 
     from escpos.printer import Dummy
 
-    # Create Dummy printer with same profile
-    p = Dummy(profile=PRINTER_PROFILE)
-
-    print(f"✓ Using profile: {PRINTER_PROFILE}")
-
     # Create test image
     img = create_test_image(width=384, height=200)
 
-    # Generate ESC-POS
-    p.set(align='center')
-    p.text("RAW BYTES TEST\n\n")
-    p.image(img, impl='bitImageColumn')
-    p.text("\n")
+    # Test each implementation
+    implementations = ['bitImageColumn', 'bitImageRaster', 'graphics']
 
-    # Get raw bytes
-    raw_bytes = p.output
+    for impl in implementations:
+        print(f"\n{'='*60}")
+        print(f"Testing implementation: {impl}")
+        print(f"{'='*60}")
 
-    print(f"✓ Generated {len(raw_bytes)} bytes")
+        # Create fresh Dummy printer with same profile
+        p = Dummy(profile=PRINTER_PROFILE)
 
-    # Show first 200 bytes in hex
-    print("\nFirst 200 bytes (hex):")
-    hex_output = ' '.join(f'{b:02X}' for b in raw_bytes[:200])
-    print(hex_output)
+        print(f"✓ Using profile: {PRINTER_PROFILE}")
 
-    # Look for ESC 3 commands (line spacing)
-    print("\nSearching for ESC 3 (line spacing) commands...")
-    i = 0
-    esc3_count = 0
-    while i < len(raw_bytes) - 1:
-        if raw_bytes[i] == 0x1B and raw_bytes[i+1] == 0x33:  # ESC 3
-            if i + 2 < len(raw_bytes):
-                spacing = raw_bytes[i+2]
-                print(f"  Offset {i:5d}: ESC 3 {spacing} (line spacing = {spacing}/180 inch = {spacing/180*203.2:.1f} dots at 203 DPI)")
-                esc3_count += 1
-            i += 3
-        else:
-            i += 1
+        # Generate ESC-POS
+        p.set(align='center')
+        p.text(f"{impl} TEST\n\n")
+        try:
+            p.image(img, impl=impl)
+        except Exception as e:
+            print(f"✗ {impl} failed: {e}")
+            continue
+        p.text("\n")
 
-    print(f"\nTotal ESC 3 commands found: {esc3_count}")
+        # Get raw bytes
+        raw_bytes = p.output
 
-    # Save raw bytes for inspection
-    raw_path = '/tmp/netum_test_raw.bin'
-    with open(raw_path, 'wb') as f:
-        f.write(raw_bytes)
-    print(f"✓ Raw bytes saved to: {raw_path}")
+        print(f"✓ Generated {len(raw_bytes)} bytes")
 
-    return raw_bytes
+        # Show first 200 bytes in hex
+        print(f"\nFirst 200 bytes (hex):")
+        hex_output = ' '.join(f'{b:02X}' for b in raw_bytes[:200])
+        print(hex_output)
+
+        # Look for ESC 3 commands (line spacing)
+        print(f"\nSearching for ESC 3 (line spacing) commands...")
+        i = 0
+        esc3_count = 0
+        while i < len(raw_bytes) - 1:
+            if raw_bytes[i] == 0x1B and raw_bytes[i+1] == 0x33:  # ESC 3
+                if i + 2 < len(raw_bytes):
+                    spacing = raw_bytes[i+2]
+                    print(f"  Offset {i:5d}: ESC 3 {spacing} (line spacing = {spacing}/180 inch = {spacing/180*203.2:.1f} dots at 203 DPI)")
+                    esc3_count += 1
+                i += 3
+            else:
+                i += 1
+
+        print(f"Total ESC 3 commands found: {esc3_count}")
+
+        # Look for ESC 2 commands (reset to default line spacing)
+        print(f"\nSearching for ESC 2 (reset line spacing) commands...")
+        i = 0
+        esc2_count = 0
+        while i < len(raw_bytes) - 1:
+            if raw_bytes[i] == 0x1B and raw_bytes[i+1] == 0x32:  # ESC 2
+                print(f"  Offset {i:5d}: ESC 2 (reset to default line spacing)")
+                esc2_count += 1
+                i += 2
+            else:
+                i += 1
+
+        print(f"Total ESC 2 commands found: {esc2_count}")
+
+        # Save raw bytes for inspection
+        raw_path = f'/tmp/netum_test_{impl}.bin'
+        with open(raw_path, 'wb') as f:
+            f.write(raw_bytes)
+        print(f"✓ Raw bytes saved to: {raw_path}")
+
+    return None  # We generated multiple outputs
 
 if __name__ == '__main__':
     print("=" * 60)
