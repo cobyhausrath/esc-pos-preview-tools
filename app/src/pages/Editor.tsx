@@ -221,11 +221,11 @@ export default function Editor() {
 
           // Insert line spacing command before first image in sequence
           if (!inImageSequence && dotsPerColumn === 24) {
-            // ESC 3 21 sets spacing to 21/180" ≈ 0.117" ≈ 24 dots at 203.2 dpi
-            result.push(0x1b, 0x33, 21);
+            // ESC 3 16 - matches what python-escpos uses for 24-dot images
+            result.push(0x1b, 0x33, 16);
             inImageSequence = true;
             if (import.meta.env.DEV) {
-              console.log('[Print] Setting line spacing to 21/180" for 24-dot images');
+              console.log('[Print] Setting line spacing to 16/180" for 24-dot images (python-escpos default)');
             }
           }
 
