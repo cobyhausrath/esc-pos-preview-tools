@@ -328,9 +328,9 @@ try:
     # Center alignment for image
     p.set(align='center')
 
-    # Print image using bitImageColumn implementation
-    # (best compatibility across thermal printer models)
-    p.image(img, impl='bitImageColumn')
+    # Print image using bitImageRaster implementation
+    # (GS v 0 format - works correctly with Netum 80-V-UL, no gaps between strips)
+    p.image(img, impl='bitImageRaster')
 
 except Exception as e:
     # Image processing error
