@@ -489,10 +489,10 @@ export default function ReceiptPreview({
                 });
               }
 
-              // Validate subcommand is 0 (raster format)
-              if (subCmd !== 0) {
+              // Validate subcommand is '0' (0x30 = ASCII '0' for raster format, or 0x00 for binary)
+              if (subCmd !== 0x30 && subCmd !== 0) {
                 if (import.meta.env.DEV) {
-                  console.warn('[GS v] Unsupported subcommand, skipping header only:', subCmd);
+                  console.warn('[GS v] Unsupported subcommand, skipping header only:', subCmd, `(0x${subCmd.toString(16)})`);
                 }
                 i += 8; // Skip 8-byte header only
                 continue;
