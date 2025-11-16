@@ -132,6 +132,41 @@ export class CommandParser {
             raw: [byte, nextByte, cutType],
           });
           pos += 3;
+        } else if (nextByte === 0x76) {
+          // GS v 0 - Print raster bit image
+          if (pos + 6 < buffer.length) {
+            const m = buffer[pos + 2]; // mode (0 = normal, 1 = double width, 2 = double height, 3 = quadruple)
+            const xL = buffer[pos + 3];
+            const xH = buffer[pos + 4];
+            const yL = buffer[pos + 5];
+            const yH = buffer[pos + 6];
+            const width = xL + (xH * 256);
+            const height = yL + (yH * 256);
+            const dataBytes = width * height;
+            const totalSize = 7 + dataBytes;
+
+            if (pos + totalSize <= buffer.length) {
+              commands.push({
+                type: 'image',
+                value: `raster ${width}x${height}, mode ${m}`,
+                raw: Array.from(buffer.subarray(pos, pos + totalSize)),
+              });
+              pos += totalSize;
+            } else {
+              // Not enough data
+              commands.push({
+                type: 'unknown',
+                raw: [byte, nextByte],
+              });
+              pos += 2;
+            }
+          } else {
+            commands.push({
+              type: 'unknown',
+              raw: [byte, nextByte],
+            });
+            pos += 2;
+          }
         } else {
           commands.push({
             type: 'unknown',

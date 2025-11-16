@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePyodide } from '@/hooks/usePyodide';
 import { usePrinterClient } from '@/hooks/usePrinterClient';
+import { useSettings } from '@/hooks/useSettings';
 import { HexFormatter } from '@/utils/hexFormatter';
 import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
 import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
@@ -9,13 +10,15 @@ import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
 import PrinterControls from '@/components/PrinterControls';
+import Settings from '@/components/Settings';
 import TemplateButtons from '@/components/TemplateButtons';
 import type { TemplateType, ReceiptData } from '@/types';
 
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
 
 export default function Editor() {
-  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode, generateImageCode } = usePyodide();
+  const { settings, updateSettings } = useSettings();
+  const { pyodide, isLoading: isPyodideLoading, error: pyodideError, runCode, convertBytesToCode, generateImageCode } = usePyodide(settings);
   const printer = usePrinterClient();
 
   const [code, setCode] = useState(DEFAULT_CODE);
@@ -509,6 +512,8 @@ export default function Editor() {
             onPrint={handlePrint}
             disabled={!receiptData.escposBytes}
           />
+
+          <Settings settings={settings} onUpdate={updateSettings} />
 
           <button onClick={() => setShowHex(!showHex)} className="hex-toggle">
             {showHex ? 'Hide' : 'Show'} HEX View
