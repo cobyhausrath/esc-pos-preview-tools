@@ -1080,3 +1080,23 @@ body {
   -ms-interpolation-mode: nearest-neighbor;
   vertical-align: top;
 }
+
+/* Text line before bitImageColumn first strip - inline-block to flow with image */
+.before-column-first {
+  display: inline-block !important;
+  vertical-align: top;
+}
+
+/* bitImageColumn first strip - inline-block with text */
+.image-column-first {
+  display: inline-block !important;
+  vertical-align: top;
+  line-height: 0;
+}
+
+/* bitImageColumn continuation strips - block display with alignment */
+.image-column-continuation {
+  display: block;
+  width: 100%;
+  margin-top: 0;
+}

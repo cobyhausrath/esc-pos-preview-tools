@@ -140,6 +140,7 @@ export default function ReceiptPreview({
         bold: boolean;
         underline: boolean;
         lineNumber: number;
+        imageMode?: 'column' | 'raster';
       }> = [];
       const newCommandMap = new Map<number, LineState>();
       let lineCommands: CommandMetadata[] = [];
@@ -318,6 +319,7 @@ export default function ReceiptPreview({
                 bold: false,
                 underline: false,
                 lineNumber: lineCount,
+                imageMode: 'column',
               });
               lineCount++;
 
@@ -470,6 +472,7 @@ export default function ReceiptPreview({
                   bold: false,
                   underline: false,
                   lineNumber: lineCount,
+                  imageMode: 'raster',
                 });
                 lineCount++;
 
@@ -638,17 +641,36 @@ export default function ReceiptPreview({
         ) : escposBytes ? (
           <div className="receipt-content">
             {previewLines.map((line, index) => {
+              // Check if next line is a first bitImageColumn strip
+              const nextLine = index < previewLines.length - 1 ? previewLines[index + 1] : null;
+              const isNextColumnFirstStrip =
+                nextLine?.text?.startsWith('__IMAGE__') &&
+                nextLine?.imageMode === 'column' &&
+                (!line.text?.startsWith('__IMAGE__') || line.imageMode !== 'column');
+
               // Check if this is an image line
               if (line.text && line.text.startsWith('__IMAGE__')) {
                 const imageDataURL = line.text.substring('__IMAGE__'.length);
+
+                // Check if this is a bitImageColumn and if previous line was also bitImageColumn
+                const isColumnImage = line.imageMode === 'column';
+                const prevLine = index > 0 ? previewLines[index - 1] : null;
+                const isPrevColumnImage = prevLine?.imageMode === 'column';
+                const isFirstStrip = isColumnImage && !isPrevColumnImage;
+                const isContinuationStrip = isColumnImage && isPrevColumnImage;
+
                 return (
                   <div
                     key={index}
-                    className={`receipt-line ${line.align}`}
+                    className={`receipt-line ${line.align} ${isFirstStrip ? 'image-column-first' : ''} ${isContinuationStrip ? 'image-column-continuation' : ''}`}
                     data-line={line.lineNumber}
                     data-align={line.align}
                     onContextMenu={handleContextMenu}
-                    style={{ padding: 0, minHeight: 0, lineHeight: 0 }}
+                    style={
+                      isFirstStrip
+                        ? { padding: 0, minHeight: 0, display: 'inline-block', verticalAlign: 'top' }
+                        : { padding: 0, minHeight: 0, lineHeight: 0 }
+                    }
                   >
                     <img
                       src={imageDataURL}
@@ -687,12 +709,17 @@ export default function ReceiptPreview({
               return (
                 <div
                   key={index}
-                  className={`receipt-line ${line.align}`}
+                  className={`receipt-line ${line.align} ${isNextColumnFirstStrip ? 'before-column-first' : ''}`}
                   data-line={line.lineNumber}
                   data-align={line.align}
                   data-bold={line.bold}
                   data-underline={line.underline}
                   onContextMenu={handleContextMenu}
+                  style={
+                    isNextColumnFirstStrip
+                      ? { display: 'inline-block', verticalAlign: 'top' }
+                      : undefined
+                  }
                 >
                   {content}
                 </div>
