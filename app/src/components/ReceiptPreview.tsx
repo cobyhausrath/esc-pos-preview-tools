@@ -463,102 +463,117 @@ export default function ReceiptPreview({
           }
 
           // GS v 0 - Raster Image
-          if (cmd === 0x76 && i + 7 < bytes.length) {
-            const subCmd = bytes[i + 2];
-            const m = bytes[i + 3]; // mode
-            const xL = bytes[i + 4];
-            const xH = bytes[i + 5];
-            const yL = bytes[i + 6];
-            const yH = bytes[i + 7];
-            const widthBytes = xL + (xH * 256);
-            const heightDots = yL + (yH * 256);
-            const totalDataBytes = widthBytes * heightDots;
-            const totalSize = 8 + totalDataBytes;
-
-            if (import.meta.env.DEV) {
-              console.log('[GS v 0] Parsing raster image:', {
-                subCmd,
-                mode: m,
-                widthBytes,
-                heightDots,
-                totalDataBytes,
-                totalSize,
-                availableBytes: bytes.length - i,
-              });
-            }
-
-            if (i + totalSize <= bytes.length && subCmd === 0) {
-              // Extract and decode raster image data
-              const imageData = bytes.slice(i + 8, i + totalSize);
-
-              // Decode bitmap and create data URL
-              const imageDataURL = decodeRasterImage(imageData, widthBytes, heightDots);
+          if (cmd === 0x76) {
+            // Check if we have at least the header (8 bytes)
+            if (i + 7 < bytes.length) {
+              const subCmd = bytes[i + 2];
+              const m = bytes[i + 3]; // mode
+              const xL = bytes[i + 4];
+              const xH = bytes[i + 5];
+              const yL = bytes[i + 6];
+              const yH = bytes[i + 7];
+              const widthBytes = xL + (xH * 256);
+              const heightDots = yL + (yH * 256);
+              const totalDataBytes = widthBytes * heightDots;
+              const totalSize = 8 + totalDataBytes;
 
               if (import.meta.env.DEV) {
-                console.log('[GS v 0] Generated data URL:', {
-                  length: imageDataURL.length,
-                  preview: imageDataURL.substring(0, 50),
-                  isEmpty: imageDataURL === '',
+                console.log('[GS v 0] Parsing raster image:', {
+                  subCmd,
+                  mode: m,
+                  widthBytes,
+                  heightDots,
+                  totalDataBytes,
+                  totalSize,
+                  availableBytes: bytes.length - i,
                 });
               }
 
-              // Skip if data URL generation failed
-              if (!imageDataURL) {
-                if (import.meta.env.DEV) {
-                  console.error('[GS v 0] Failed to generate data URL, skipping image');
-                }
-                i += totalSize;
-                continue;
-              }
+              // Check if we have full command and it's raster format
+              if (i + totalSize <= bytes.length && subCmd === 0) {
+                // Extract and decode raster image data
+                const imageData = bytes.slice(i + 8, i + totalSize);
 
-              // Flush current line if exists
-              if (currentLine) {
+                // Decode bitmap and create data URL
+                const imageDataURL = decodeRasterImage(imageData, widthBytes, heightDots);
+
+                if (import.meta.env.DEV) {
+                  console.log('[GS v 0] Generated data URL:', {
+                    length: imageDataURL.length,
+                    preview: imageDataURL.substring(0, 50),
+                    isEmpty: imageDataURL === '',
+                  });
+                }
+
+                // Skip if data URL generation failed
+                if (!imageDataURL) {
+                  if (import.meta.env.DEV) {
+                    console.error('[GS v 0] Failed to generate data URL, skipping image');
+                  }
+                  i += totalSize;
+                  continue;
+                }
+
+                // Flush current line if exists
+                if (currentLine) {
+                  lines.push({
+                    text: currentLine,
+                    align: currentAlign,
+                    bold: currentBold,
+                    underline: currentUnderline,
+                    lineNumber: lineCount,
+                  });
+                  newCommandMap.set(lineCount, {
+                    align: currentAlign,
+                    bold: currentBold,
+                    underline: currentUnderline,
+                    commands: [...lineCommands],
+                  });
+                  lineCount++;
+                  lineCommands = [];
+                  currentLine = '';
+                }
+
+                // Add image as a special line with data URL
                 lines.push({
-                  text: currentLine,
+                  text: `__IMAGE__${imageDataURL}`,
                   align: currentAlign,
-                  bold: currentBold,
-                  underline: currentUnderline,
+                  bold: false,
+                  underline: false,
                   lineNumber: lineCount,
                 });
-                newCommandMap.set(lineCount, {
-                  align: currentAlign,
-                  bold: currentBold,
-                  underline: currentUnderline,
-                  commands: [...lineCommands],
-                });
                 lineCount++;
-                lineCommands = [];
-                currentLine = '';
-              }
 
-              // Add image as a special line with data URL
-              lines.push({
-                text: `__IMAGE__${imageDataURL}`,
-                align: currentAlign,
-                bold: false,
-                underline: false,
-                lineNumber: lineCount,
-              });
-              lineCount++;
+                lineCommands.push({
+                  type: 'image',
+                  value: m,
+                  pythonCode: `p.image(img, impl='bitImageRaster')`,
+                });
 
-              lineCommands.push({
-                type: 'image',
-                value: m,
-                pythonCode: `p.image(img, impl='bitImageRaster')`,
-              });
+                i += totalSize;
 
-              i += totalSize;
-
-              // Skip line feed if immediately after image (avoid blank lines between strips)
-              if (i < bytes.length && bytes[i] === 0x0a) {
-                if (import.meta.env.DEV) {
-                  console.log('[GS v 0] Skipping LF after image to avoid gap');
+                // Skip line feed if immediately after image (avoid blank lines between strips)
+                if (i < bytes.length && bytes[i] === 0x0a) {
+                  if (import.meta.env.DEV) {
+                    console.log('[GS v 0] Skipping LF after image to avoid gap');
+                  }
+                  i++;
                 }
-                i++;
-              }
 
-              continue;
+                continue;
+              } else {
+                // We have the header but not enough data or wrong subcommand
+                // Skip at least the header to avoid treating it as garbage text
+                if (import.meta.env.DEV) {
+                  console.warn('[GS v 0] Incomplete or unsupported, skipping header + available data');
+                }
+                i += Math.min(totalSize, bytes.length - i);
+                continue;
+              }
             }
+            // Not enough bytes for header, treat as unknown GS command
+            i += 2;
+            continue;
           }
 
           i += 2;
