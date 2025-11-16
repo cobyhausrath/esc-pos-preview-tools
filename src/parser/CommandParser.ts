@@ -136,7 +136,8 @@ export class CommandParser {
           // GS v 0 - Print raster bit image
           // Format: GS v 0 m xL xH yL yH [data...]
           if (pos + 7 < buffer.length) {
-            const subCmd = buffer[pos + 2]; // Should be 0 for raster format
+            // subCmd at buffer[pos + 2] should be 0x30 ('0') for raster format
+            // Parser doesn't validate this - validation happens in renderer
             const m = buffer[pos + 3]; // mode (0 = normal, 1 = double width, 2 = double height, 3 = quadruple)
             const xL = buffer[pos + 4];
             const xH = buffer[pos + 5];
