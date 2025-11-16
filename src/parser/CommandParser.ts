@@ -79,6 +79,38 @@ export class CommandParser {
             }
             break;
 
+          case 0x2a: // ESC * - Bit Image (used for images)
+            if (pos + 4 < buffer.length) {
+              const mode = buffer[pos + 2];
+              const nL = buffer[pos + 3];
+              const nH = buffer[pos + 4];
+              const dataBytes = nL + (nH * 256);
+              const totalSize = 5 + dataBytes;
+
+              if (pos + totalSize <= buffer.length) {
+                commands.push({
+                  type: 'image',
+                  value: `mode ${mode}, ${dataBytes} bytes`,
+                  raw: Array.from(buffer.subarray(pos, pos + totalSize)),
+                });
+                pos += totalSize;
+              } else {
+                // Not enough data, treat as unknown
+                commands.push({
+                  type: 'unknown',
+                  raw: [byte, nextByte],
+                });
+                pos += 2;
+              }
+            } else {
+              commands.push({
+                type: 'unknown',
+                raw: [byte, nextByte],
+              });
+              pos += 2;
+            }
+            break;
+
           default:
             commands.push({
               type: 'unknown',

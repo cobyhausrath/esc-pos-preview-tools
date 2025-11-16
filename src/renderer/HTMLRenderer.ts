@@ -79,6 +79,12 @@ export class HTMLRenderer {
           state.size = cmd.value as number;
           break;
 
+        case 'image':
+          // Render image placeholder with byte count
+          const imageInfo = cmd.value as string || 'unknown size';
+          currentLine += `<span class="image-placeholder">[IMAGE: ${imageInfo}]</span>`;
+          break;
+
         case 'linefeed':
           html += this.renderLine(currentLine, state);
           currentLine = '';
@@ -257,6 +263,17 @@ export class HTMLRenderer {
       text-decoration: underline;
       text-decoration-thickness: 1px;
       text-underline-offset: 2px;
+    }
+
+    .image-placeholder {
+      display: inline-block;
+      background: #e0e0e0;
+      border: 1px dashed #999;
+      padding: 4px 8px;
+      margin: 2px 0;
+      color: #666;
+      font-size: 12px;
+      border-radius: 3px;
     }
 
     /* Control panel */
