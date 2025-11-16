@@ -182,14 +182,21 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
     // Mark command time to pause status checks
     lastCommandTimeRef.current = Date.now();
     onPrint();
-    // If auto-cut is enabled, cut after print
-    if (settings.autoCut) {
-      // Wait a bit for print to finish
+
+    // Wait for print to finish, then do auto-feed and/or auto-cut
+    if (settings.autoFeed || settings.autoCut) {
       setTimeout(async () => {
         try {
-          await printer.cutPaper(false);
+          // Auto-feed first (if enabled)
+          if (settings.autoFeed) {
+            await printer.feedPaper(3);
+          }
+          // Then auto-cut (if enabled)
+          if (settings.autoCut) {
+            await printer.cutPaper(false);
+          }
         } catch (err) {
-          console.error('Auto-cut failed:', err);
+          console.error('Auto-feed/cut failed:', err);
         }
       }, 500);
     }
@@ -309,6 +316,21 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
+                    checked={settings.autoFeed}
+                    onChange={(e) => onUpdateSettings({ autoFeed: e.target.checked })}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>Auto-feed after print</span>
+                </label>
+                <small style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                  Automatically feed paper after printing
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
                     checked={settings.autoCut}
                     onChange={(e) => onUpdateSettings({ autoCut: e.target.checked })}
                     style={{ cursor: 'pointer' }}
@@ -412,7 +434,7 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
             >
               ✂️ Cut
             </button>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <button
                 className="print-button"
                 onClick={handlePrintWithAutoCut}
@@ -420,6 +442,10 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
                 title={
                   printer.printerStatus?.error
                     ? `Cannot print: ${printer.printerStatus.errorMessage}`
+                    : settings.autoFeed && settings.autoCut
+                    ? 'Print, auto-feed, and auto-cut'
+                    : settings.autoFeed
+                    ? 'Print and auto-feed'
                     : settings.autoCut
                     ? 'Print and auto-cut'
                     : 'Print to thermal printer'
@@ -427,6 +453,25 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
               >
                 {printer.isPrinting ? 'Printing...' : 'Print'}
               </button>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  whiteSpace: 'nowrap'
+                }}
+                title="Automatically feed paper after printing"
+              >
+                <input
+                  type="checkbox"
+                  checked={settings.autoFeed}
+                  onChange={(e) => onUpdateSettings({ autoFeed: e.target.checked })}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span>Feed</span>
+              </label>
               <label
                 style={{
                   display: 'flex',
@@ -444,7 +489,7 @@ export default function PrinterControls({ printer, onPrint, disabled, settings, 
                   onChange={(e) => onUpdateSettings({ autoCut: e.target.checked })}
                   style={{ cursor: 'pointer' }}
                 />
-                <span>Auto-cut</span>
+                <span>Cut</span>
               </label>
             </div>
             <button className="disconnect-button" onClick={printer.disconnect}>

@@ -6,6 +6,7 @@ export interface PrinterSettings {
   autoCheckStatus: boolean;
   statusCheckInterval: number; // seconds, 0 = disabled
   autoConnect: boolean;
+  autoFeed: boolean;
   autoCut: boolean;
   lastPrinterConfig: {
     name: string;
@@ -20,6 +21,7 @@ const DEFAULT_SETTINGS: PrinterSettings = {
   autoCheckStatus: true,
   statusCheckInterval: 10, // Check every 10 seconds (reduced frequency to avoid conflicts)
   autoConnect: false,
+  autoFeed: true,
   autoCut: true,
   lastPrinterConfig: null,
 };
