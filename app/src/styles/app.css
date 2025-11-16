@@ -1000,6 +1000,12 @@ body {
   text-align: left;
 }
 
+.receipt-line:has(.receipt-image) {
+  padding: 0;
+  min-height: 0;
+  line-height: 0;
+}
+
 .receipt-image {
   display: block;
   max-width: 100%;
@@ -1008,4 +1014,5 @@ body {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   -ms-interpolation-mode: nearest-neighbor;
+  vertical-align: top;
 }

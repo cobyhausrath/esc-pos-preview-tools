@@ -67,8 +67,9 @@ function decodeEscPosImage(
       const yOffset = byteInCol * 8;
 
       // Extract 8 vertical pixels from this byte
+      // Note: bit 7 (MSB) is top, bit 0 (LSB) is bottom in ESC * format
       for (let bit = 0; bit < 8; bit++) {
-        const y = yOffset + bit;
+        const y = yOffset + (7 - bit); // Reverse bit order for correct vertical orientation
         if (y >= height) break;
 
         const pixelOn = (byte & (1 << bit)) !== 0;
