@@ -272,6 +272,13 @@ export default function ReceiptPreview({
               // Decode bitmap and create data URL
               const imageDataURL = decodeEscPosImage(imageData, width, height, bytesPerColumn);
 
+              if (import.meta.env.DEV) {
+                console.log('[ESC *] Generated data URL:', {
+                  length: imageDataURL.length,
+                  preview: imageDataURL.substring(0, 50),
+                });
+              }
+
               // Flush current line if exists
               if (currentLine) {
                 lines.push({
@@ -496,12 +503,27 @@ export default function ReceiptPreview({
                     data-line={line.lineNumber}
                     data-align={line.align}
                     onContextMenu={handleContextMenu}
+                    style={{ padding: 0, minHeight: 0, lineHeight: 0 }}
                   >
                     <img
                       src={imageDataURL}
-                      alt="Receipt image"
+                      alt={`Image ${index}`}
                       className="receipt-image"
-                      style={{ maxWidth: '100%', height: 'auto' }}
+                      style={{
+                        display: 'block',
+                        maxWidth: '100%',
+                        height: 'auto',
+                        margin: 0,
+                        verticalAlign: 'top'
+                      }}
+                      onError={(e) => {
+                        if (import.meta.env.DEV) {
+                          console.error('[Image] Failed to load image:', {
+                            src: imageDataURL.substring(0, 100),
+                            index,
+                          });
+                        }
+                      }}
                     />
                   </div>
                 );
