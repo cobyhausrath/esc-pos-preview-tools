@@ -618,9 +618,9 @@ p.image(img, impl='bitImageColumn')"""
                     data_idx += 1
 
                     # Extract 8 vertical pixels from this byte
-                    # Bit 0 (LSB) = top pixel, bit 7 (MSB) = bottom pixel
+                    # Bit 7 (MSB) = top pixel, bit 0 (LSB) = bottom pixel
                     for bit in range(8):
-                        y = byte_idx * 8 + bit
+                        y = byte_idx * 8 + (7 - bit)
                         if y >= height_dots:
                             break
 
