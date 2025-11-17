@@ -182,6 +182,11 @@ export class CodeModifier {
    * @param value - Multiplier value (1-8)
    */
   changeSize(lineNumber: number, dimension: 'width' | 'height', value: number): void {
+    // Validate range (ESC-POS supports 1-8x multipliers)
+    if (value < 1 || value > 8) {
+      console.error(`Invalid ${dimension} value: ${value}, must be 1-8`);
+      return;
+    }
     this.insertSetCall(lineNumber, dimension, value);
   }
 
@@ -315,21 +320,24 @@ export class CodeModifier {
     if (pythonCode.includes('p.set(')) {
       // Extract attribute and value from p.set() call
       const setMatch = pythonCode.match(/p\.set\(([^=]+)=(.+)\)/);
-      if (setMatch && setMatch[1] && setMatch[2]) {
-        const attribute = setMatch[1].trim();
-        let value: string | boolean | number = setMatch[2].trim();
-
-        // Parse value
-        if (value === 'True') value = true;
-        else if (value === 'False') value = false;
-        else if (value.startsWith("'") || value.startsWith('"')) {
-          value = value.slice(1, -1); // Remove quotes
-        } else if (!isNaN(Number(value))) {
-          value = Number(value);
-        }
-
-        this.insertSetCall(codeLineNumber, attribute, value);
+      if (!setMatch || !setMatch[1] || !setMatch[2]) {
+        console.warn(`Failed to parse p.set() command: ${pythonCode}`);
+        return;
       }
+
+      const attribute = setMatch[1].trim();
+      let value: string | boolean | number = setMatch[2].trim();
+
+      // Parse value
+      if (value === 'True') value = true;
+      else if (value === 'False') value = false;
+      else if (value.startsWith("'") || value.startsWith('"')) {
+        value = value.slice(1, -1); // Remove quotes
+      } else if (!isNaN(Number(value))) {
+        value = Number(value);
+      }
+
+      this.insertSetCall(codeLineNumber, attribute, value);
     } else if (pythonCode.includes('p.barcode(')) {
       // Extract barcode type
       const barcodeMatch = pythonCode.match(/p\.barcode\([^,]+,\s*['"]([^'"]+)['"]\)/);
@@ -340,9 +348,13 @@ export class CodeModifier {
     } else if (pythonCode.includes('p.image(')) {
       // Extract impl parameter
       const implMatch = pythonCode.match(/impl\s*=\s*['"]([^'"]+)['"]/);
-      if (implMatch && implMatch[1]) {
-        this.changeImageFormat(codeLineNumber, implMatch[1]);
+      if (!implMatch || !implMatch[1]) {
+        console.warn(`Failed to parse p.image() impl parameter: ${pythonCode}`);
+        return;
       }
+      this.changeImageFormat(codeLineNumber, implMatch[1]);
+    } else {
+      console.warn(`Unrecognized python-escpos command: ${pythonCode}`);
     }
   }
 

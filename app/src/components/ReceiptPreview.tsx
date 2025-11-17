@@ -430,8 +430,10 @@ export default function ReceiptPreview({
           if (cmd === 0x21 && i + 2 < bytes.length) {
             const size = bytes[i + 2];
             // Lower 3 bits: width multiplier (1-8)
+            // The bit mask & 0x07 automatically caps values at 7, ensuring valid range
             currentWidth = (size & 0x07) + 1;
             // Upper 3 bits: height multiplier (1-8)
+            // The bit mask & 0x07 automatically caps values at 7, ensuring valid range
             currentHeight = ((size >> 4) & 0x07) + 1;
             lineCommands.push({
               type: 'size',
