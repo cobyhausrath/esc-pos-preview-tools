@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 
 from escpos_constants import (
     ESC, GS, LF, CR,
-    ESC_INIT, ESC_BOLD, ESC_UNDERLINE, ESC_ALIGN, ESC_PRINT_MODE,
-    GS_CUT, GS_CHAR_SIZE,
+    ESC_INIT, ESC_BOLD, ESC_UNDERLINE, ESC_ALIGN, ESC_PRINT_MODE, ESC_BIT_IMAGE,
+    GS_CUT, GS_CHAR_SIZE, GS_RASTER_IMAGE,
     BOLD_ON, UNDERLINE_OFF,
     ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT, ALIGN_VALUE_TO_NAME,
     CUT_PARTIAL, CUT_PARTIAL_ASCII, CUT_VALUE_TO_MODE,
@@ -180,6 +180,35 @@ class EscPosVerifier:
             self.position += 3
             self.logger.debug(f"Parsed alignment command: {align}")
 
+        # ESC * - Bit image
+        elif command == ESC_BIT_IMAGE:
+            if self.position + 4 >= len(data):
+                self.position += 2
+                return
+            mode = data[self.position + 2]
+            nL = data[self.position + 3]
+            nH = data[self.position + 4]
+            width_dots = nL + (nH * 256)
+
+            # Calculate data bytes based on mode
+            # Mode determines vertical dot density
+            # For simplicity, we'll use a common formula
+            data_bytes = width_dots
+            total_size = 5 + data_bytes
+
+            if self.position + total_size <= len(data):
+                self.commands.append(ParsedCommand(
+                    name="bit_image",
+                    escpos_bytes=data[self.position:self.position + total_size],
+                    python_call=f"# TODO: Image ({width_dots} dots wide, mode {mode}) - use p.image(img, impl='bitImageColumn')",
+                    params={"width": width_dots, "mode": mode, "type": "bit_image"}
+                ))
+                self.position += total_size
+                self.logger.debug(f"Parsed bit image: {width_dots} dots, mode {mode}")
+            else:
+                # Not enough data
+                self.position += 2
+
         # ESC ! - Print mode (size, bold, etc.)
         elif command == ESC_PRINT_MODE:
             if self.position + 2 >= len(data):
@@ -256,6 +285,52 @@ class EscPosVerifier:
             ))
             self.position += 3
             self.logger.debug(f"Parsed cut command: {cut_mode}")
+
+        # GS v - Raster image (GS v 0 format)
+        elif command == GS_RASTER_IMAGE:
+            if self.position + 7 >= len(data):
+                self.position += 2
+                return
+
+            # Check for GS v 0 format (0x30 = ASCII '0')
+            sub_command = data[self.position + 2]
+            if sub_command == 0x30 or sub_command == 0x00:  # Support both 0 and ASCII '0'
+                mode = data[self.position + 3]
+                xL = data[self.position + 4]
+                xH = data[self.position + 5]
+                yL = data[self.position + 6]
+                yH = data[self.position + 7]
+
+                width_bytes = xL + (xH * 256)
+                height_dots = yL + (yH * 256)
+                data_bytes = width_bytes * height_dots
+                total_size = 8 + data_bytes
+
+                if self.position + total_size <= len(data):
+                    width_pixels = width_bytes * 8
+                    self.commands.append(ParsedCommand(
+                        name="raster_image",
+                        escpos_bytes=data[self.position:self.position + total_size],
+                        python_call=f"# TODO: Image ({width_pixels}x{height_dots}px) - use p.image(img, impl='bitImageRaster')",
+                        params={
+                            "width_bytes": width_bytes,
+                            "width_pixels": width_pixels,
+                            "height": height_dots,
+                            "mode": mode,
+                            "type": "raster_image"
+                        }
+                    ))
+                    self.position += total_size
+                    self.logger.debug(f"Parsed raster image: {width_pixels}x{height_dots}px, mode {mode}")
+                else:
+                    # Not enough data
+                    self.position += 2
+            else:
+                # Unknown GS v sub-command
+                warning = f"Unknown GS v sub-command 0x{sub_command:02X} at position {self.position}"
+                self.warnings.append(warning)
+                self.logger.warning(warning)
+                self.position += 3
 
         # GS ! - Character size
         elif command == GS_CHAR_SIZE:

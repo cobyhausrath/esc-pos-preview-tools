@@ -34,6 +34,9 @@ ESC_CHAR_CODE_TABLE = 0x74  # ESC t - Select character code table
 # Paper control
 ESC_LINE_FEED = 0x64  # ESC d - Print and feed n lines
 
+# Image printing
+ESC_BIT_IMAGE = 0x2A  # ESC * - Select bit-image mode
+
 # ============================================================================
 # GS Commands (0x1D prefix)
 # ============================================================================
@@ -43,6 +46,9 @@ GS_CUT = 0x56  # GS V - Cut paper
 
 # Character size
 GS_CHAR_SIZE = 0x21  # GS ! - Select character size
+
+# Image printing
+GS_RASTER_IMAGE = 0x76  # GS v - Print raster bit image
 
 # ============================================================================
 # Command Values
