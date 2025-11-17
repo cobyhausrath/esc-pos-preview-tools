@@ -108,6 +108,9 @@ class EscPosVerifier:
                 self.logger.warning(warning)
                 self.position += 1
 
+        # Merge sequential bit images (ESC * stripes of the same image)
+        self._merge_bit_image_stripes()
+
         if self.warnings:
             self.logger.info(f"Parsing completed with {len(self.warnings)} warning(s)")
 
@@ -438,6 +441,129 @@ p.set(align='left')"""
             params={"text": text}
         ))
         self.logger.debug(f"Parsed text: {len(text)} characters")
+
+    def _merge_bit_image_stripes(self):
+        """
+        Merge sequential ESC * bit images into single tall images
+
+        ESC * mode 33 (24-dot) is often used to send tall images as horizontal stripes.
+        This method detects and combines sequential bit images with the same width/mode.
+        """
+        if not self.commands:
+            return
+
+        merged_commands = []
+        i = 0
+
+        while i < len(self.commands):
+            cmd = self.commands[i]
+
+            # Check if this is a bit image
+            if cmd.name == "bit_image":
+                # Look ahead for sequential bit images with same width and mode
+                stripes = [cmd]
+                j = i + 1
+
+                # Skip line feeds between stripes
+                while j < len(self.commands):
+                    next_cmd = self.commands[j]
+
+                    # Allow line feeds between stripes (they're often present)
+                    if next_cmd.name == "line_feed":
+                        j += 1
+                        continue
+
+                    # Check if it's another bit image with matching parameters
+                    if (next_cmd.name == "bit_image" and
+                        next_cmd.params.get("width") == cmd.params.get("width") and
+                        next_cmd.params.get("mode") == cmd.params.get("mode")):
+                        stripes.append(next_cmd)
+                        j += 1
+                    else:
+                        break
+
+                # If we found multiple stripes, merge them
+                if len(stripes) > 1:
+                    merged_cmd = self._combine_bit_image_stripes(stripes)
+                    merged_commands.append(merged_cmd)
+                    i = j  # Skip all merged commands
+                    self.logger.debug(f"Merged {len(stripes)} bit image stripes into single image")
+                else:
+                    # Single image, add as-is
+                    merged_commands.append(cmd)
+                    i += 1
+            else:
+                # Not a bit image, add as-is
+                merged_commands.append(cmd)
+                i += 1
+
+        self.commands = merged_commands
+
+    def _combine_bit_image_stripes(self, stripes: List[ParsedCommand]) -> ParsedCommand:
+        """
+        Combine multiple bit image stripes into a single tall image
+
+        Args:
+            stripes: List of bit image commands to combine
+
+        Returns:
+            Single ParsedCommand with combined image
+        """
+        from PIL import Image
+        import io
+        import base64
+
+        # Get parameters from first stripe
+        width_dots = stripes[0].params["width"]
+        height_per_stripe = stripes[0].params["height"]
+        mode = stripes[0].params["mode"]
+        total_height = height_per_stripe * len(stripes)
+
+        # Create combined image
+        combined_img = Image.new('1', (width_dots, total_height), 1)  # white background
+
+        # Paste each stripe
+        for idx, stripe in enumerate(stripes):
+            if stripe.params.get("base64"):
+                try:
+                    # Decode the base64 stripe
+                    img_data = base64.b64decode(stripe.params["base64"])
+                    stripe_img = Image.open(io.BytesIO(img_data))
+
+                    # Paste at the correct vertical position
+                    y_offset = idx * height_per_stripe
+                    combined_img.paste(stripe_img, (0, y_offset))
+                except Exception as e:
+                    self.logger.error(f"Failed to combine stripe {idx}: {e}")
+
+        # Convert combined image to base64
+        buffer = io.BytesIO()
+        combined_img.save(buffer, format='PNG')
+        png_data = buffer.getvalue()
+        b64_data = base64.b64encode(png_data).decode('ascii')
+
+        # Generate python call for combined image
+        python_call = f"""# Bit image ({width_dots}x{total_height} dots, {len(stripes)} stripes of mode {mode})
+img_data = base64.b64decode('''{b64_data}''')
+img = Image.open(io.BytesIO(img_data))
+p.image(img, impl='bitImageColumn')"""
+
+        # Combine all ESC-POS bytes
+        combined_bytes = b''.join(stripe.escpos_bytes for stripe in stripes)
+
+        return ParsedCommand(
+            name="bit_image",
+            escpos_bytes=combined_bytes,
+            python_call=python_call,
+            params={
+                "width": width_dots,
+                "height": total_height,
+                "mode": mode,
+                "type": "bit_image_combined",
+                "stripe_count": len(stripes),
+                "base64": b64_data
+            }
+        )
 
     def _decode_bit_image(self, width_dots: int, height_dots: int, bytes_per_column: int, data: bytes) -> str:
         """
