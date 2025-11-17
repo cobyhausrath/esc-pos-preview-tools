@@ -194,6 +194,9 @@ validate_code(${JSON.stringify(code)})
         await Promise.race([
           pyodide.runPythonAsync(`
 from escpos.printer import Dummy
+from PIL import Image
+import io
+import base64
 
 # Create a dummy printer configured for ${printerProfile}
 p = Dummy(profile='${printerProfile}')

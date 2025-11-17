@@ -221,12 +221,11 @@ class EscPosVerifier:
 
                 if b64_image:
                     # Generate code with embedded image
+                    # Note: ESC * images are sent as horizontal stripes without alignment changes
                     python_call = f"""# Bit image ({width_dots}x{height_dots} dots, mode {mode})
 img_data = base64.b64decode('''{b64_image}''')
 img = Image.open(io.BytesIO(img_data))
-p.set(align='center')
-p.image(img, impl='bitImageColumn')
-p.set(align='left')"""
+p.image(img, impl='bitImageColumn')"""
                 else:
                     # Fallback if decode fails
                     python_call = f"# Bit image ({width_dots}x{height_dots} dots, mode {mode}) - decode failed"
