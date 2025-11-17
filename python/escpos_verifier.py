@@ -509,44 +509,33 @@ p.set(align='left')"""
         Returns:
             Single ParsedCommand with combined image
         """
-        from PIL import Image
-        import io
-        import base64
-
         # Get parameters from first stripe
         width_dots = stripes[0].params["width"]
         height_per_stripe = stripes[0].params["height"]
         mode = stripes[0].params["mode"]
+        bytes_per_column = (height_per_stripe + 7) // 8  # Round up
         total_height = height_per_stripe * len(stripes)
 
-        # Create combined image
-        combined_img = Image.new('1', (width_dots, total_height), 1)  # white background
+        # Extract raw image data from each stripe's escpos_bytes
+        # ESC * format: ESC 0x2A mode nL nH [data...]
+        combined_data = bytearray()
+        for stripe in stripes:
+            # Skip the 5-byte header (ESC, *, mode, nL, nH) and extract just the image data
+            stripe_data = stripe.escpos_bytes[5:]
+            combined_data.extend(stripe_data)
 
-        # Paste each stripe
-        for idx, stripe in enumerate(stripes):
-            if stripe.params.get("base64"):
-                try:
-                    # Decode the base64 stripe
-                    img_data = base64.b64decode(stripe.params["base64"])
-                    stripe_img = Image.open(io.BytesIO(img_data))
+        # Now decode the combined raw data as a single tall image
+        b64_image = self._decode_bit_image(width_dots, total_height, bytes_per_column, bytes(combined_data))
 
-                    # Paste at the correct vertical position
-                    y_offset = idx * height_per_stripe
-                    combined_img.paste(stripe_img, (0, y_offset))
-                except Exception as e:
-                    self.logger.error(f"Failed to combine stripe {idx}: {e}")
-
-        # Convert combined image to base64
-        buffer = io.BytesIO()
-        combined_img.save(buffer, format='PNG')
-        png_data = buffer.getvalue()
-        b64_data = base64.b64encode(png_data).decode('ascii')
-
-        # Generate python call for combined image
-        python_call = f"""# Bit image ({width_dots}x{total_height} dots, {len(stripes)} stripes of mode {mode})
-img_data = base64.b64decode('''{b64_data}''')
+        if b64_image:
+            # Generate python call for combined image
+            python_call = f"""# Bit image ({width_dots}x{total_height} dots, {len(stripes)} stripes of mode {mode})
+img_data = base64.b64decode('''{b64_image}''')
 img = Image.open(io.BytesIO(img_data))
 p.image(img, impl='bitImageColumn')"""
+        else:
+            # Fallback if decode fails
+            python_call = f"# Bit image ({width_dots}x{total_height} dots, {len(stripes)} stripes) - decode failed"
 
         # Combine all ESC-POS bytes
         combined_bytes = b''.join(stripe.escpos_bytes for stripe in stripes)
@@ -561,7 +550,7 @@ p.image(img, impl='bitImageColumn')"""
                 "mode": mode,
                 "type": "bit_image_combined",
                 "stripe_count": len(stripes),
-                "base64": b64_data
+                "base64": b64_image if b64_image else None
             }
         )
 
