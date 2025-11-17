@@ -1087,6 +1087,11 @@ body {
   white-space: nowrap;
 }
 
+.image-badge-indent {
+  white-space: pre;
+  font-family: 'Courier New', monospace;
+}
+
 .image-badge-prefix {
   font-family: 'Courier New', monospace;
   color: var(--text-primary);

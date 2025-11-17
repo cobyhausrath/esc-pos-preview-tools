@@ -33,11 +33,17 @@ export default function ImageBadge({ image, onClick }: ImageBadgeProps) {
     ? `${image.width}x${image.height}`
     : `Image`;
 
+  // Extract indentation from the fullMatch
+  const indentMatch = image.fullMatch.match(/^([ \t]*)/);
+  const indent = indentMatch ? indentMatch[1] : '';
+
   return (
     <>
       <span
         className="image-badge-wrapper"
       >
+        {/* Render indentation as-is (spaces/tabs preserved) */}
+        {indent && <span className="image-badge-indent">{indent}</span>}
         <span className="image-badge-prefix">img_data = </span>
         <span
           className="image-badge"

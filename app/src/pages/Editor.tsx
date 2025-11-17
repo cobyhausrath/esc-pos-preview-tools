@@ -7,7 +7,7 @@ import { generateTemplate, TEMPLATES, EXAMPLE_CODES } from '@/utils/templates';
 import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
 import { CodeModifier } from '@/utils/codeModifier';
 import { processImageForPrinting } from '@/utils/dithering';
-import { replaceBase64Image, type ImageMatch } from '@/utils/imageParser';
+import { replaceBase64Image, detectBase64Images, type ImageMatch } from '@/utils/imageParser';
 import { cacheOriginalImage, getCachedImage } from '@/utils/imageCache';
 import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
@@ -73,7 +73,6 @@ export default function Editor() {
   useEffect(() => {
     if (selectedImage) {
       // Re-detect images in the updated code
-      const { detectBase64Images } = require('@/utils/imageParser');
       const detectedImages = detectBase64Images(code);
 
       // Find matching image by base64 data prefix (position may have changed)
