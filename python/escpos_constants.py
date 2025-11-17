@@ -93,6 +93,7 @@ ASCII_PRINTABLE_END = 0x7E  # Tilde character
 # ============================================================================
 
 MAX_INPUT_SIZE = 1_000_000  # Maximum ESC-POS data size (1MB)
+MAX_IMAGE_DIMS = 10000  # Maximum image width or height (prevents DoS via large images)
 
 # ============================================================================
 # Mappings

@@ -44,17 +44,29 @@ if home not in sys.path:
 
 **Image Library Imports**: Always import PIL, io, and base64 in code execution wrapper to ensure image functionality is available on initial page load.
 
-### Code Cleanup Logic
+### Code Cleanup Logic (app/src/hooks/usePyodide.ts)
 
-Fixed `convertBytesToCode()` to properly extract commands between markers:
+Fixed `convertBytesToCode()` to properly extract commands between markers instead of stopping at first empty line:
 
-```typescript
-// Find start/end markers
-const startMarker = '# Execute commands';
-const endMarker = '# Get the generated ESC-POS bytes';
+```python
+# Find the start (after "# Execute commands")
+start = 0
+for i, line in enumerate(lines):
+    if '# Execute commands' in line:
+        start = i + 1
+        break
 
-// Extract only command lines, not all lines until first empty line
-const commandLines = lines.slice(startIdx, endIdx);
+# Find the end (before "# Get the generated ESC-POS bytes")
+end = len(lines)
+for i, line in enumerate(lines):
+    if '# Get the generated ESC-POS bytes' in line:
+        end = i
+        break
+
+# Extract command lines and remove trailing empty lines
+command_lines = lines[start:end]
+while command_lines and not command_lines[-1].strip():
+    command_lines.pop()
 ```
 
 ### Bit Image Decoding (python/escpos_verifier.py)
@@ -260,13 +272,12 @@ Documentation and analysis of different decoding strategies with implementation 
 - **app/public/python/escpos_verifier.py** (mirrored changes)
 
 ### React Frontend
-- **app/src/hooks/usePyodide.ts** (+40 lines)
-  - Write Python files to Pyodide filesystem
+- **app/src/hooks/usePyodide.ts** (~50 lines modified)
+  - Write Python files to Pyodide filesystem instead of executing directly
   - Configure sys.path for module imports
   - Always import PIL, io, base64 in code wrapper
-
-- **app/src/components/Editor.tsx** (~10 lines modified)
-  - Fixed `convertBytesToCode()` marker extraction logic
+  - Fixed `convertBytesToCode()` to extract commands between markers
+  - Added proper cleanup of trailing empty lines
 
 ### Diagnostic Tools (New)
 - **python/test_stripe_decoding.py** (+220 lines)

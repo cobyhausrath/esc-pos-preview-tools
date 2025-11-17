@@ -29,7 +29,7 @@ from escpos_constants import (
     CUT_PARTIAL, CUT_PARTIAL_ASCII, CUT_VALUE_TO_MODE,
     PRINT_MODE_BOLD, PRINT_MODE_DOUBLE_HEIGHT, PRINT_MODE_DOUBLE_WIDTH,
     ASCII_PRINTABLE_START, ASCII_PRINTABLE_END,
-    MAX_INPUT_SIZE
+    MAX_INPUT_SIZE, MAX_IMAGE_DIMS
 )
 
 
@@ -468,7 +468,10 @@ p.set(align='left')"""
                 while j < len(self.commands):
                     next_cmd = self.commands[j]
 
-                    # Allow line feeds between stripes (they're often present)
+                    # Allow line feeds between stripes
+                    # python-escpos automatically adds line feeds after each bit image stripe
+                    # to advance paper to the next row. We skip them when merging to create
+                    # a single tall image from multiple 24-pixel stripes.
                     if next_cmd.name == "line_feed":
                         j += 1
                         continue
@@ -602,6 +605,11 @@ p.image(img, impl='bitImageColumn')"""
             import io
             import base64
 
+            # Security: Validate image dimensions to prevent DoS
+            if width_dots > MAX_IMAGE_DIMS or height_dots > MAX_IMAGE_DIMS:
+                self.logger.warning(f"Image dimensions {width_dots}x{height_dots} exceed maximum {MAX_IMAGE_DIMS}")
+                return ""
+
             # Create a new black and white image
             img = Image.new('1', (width_dots, height_dots), 1)  # 1 = white background
             pixels = img.load()
@@ -657,6 +665,11 @@ p.image(img, impl='bitImageColumn')"""
             import base64
 
             width_pixels = width_bytes * 8
+
+            # Security: Validate image dimensions to prevent DoS
+            if width_pixels > MAX_IMAGE_DIMS or height_dots > MAX_IMAGE_DIMS:
+                self.logger.warning(f"Image dimensions {width_pixels}x{height_dots} exceed maximum {MAX_IMAGE_DIMS}")
+                return ""
 
             # Create a new black and white image
             img = Image.new('1', (width_pixels, height_dots), 1)  # 1 = white background
