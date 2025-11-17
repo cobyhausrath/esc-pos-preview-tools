@@ -213,11 +213,35 @@ class EscPosVerifier:
             total_size = 5 + data_bytes
 
             if self.position + total_size <= len(data):
+                # Extract image data
+                image_data = data[self.position + 5:self.position + total_size]
+
+                # Try to decode the image
+                b64_image = self._decode_bit_image(width_dots, height_dots, bytes_per_column, image_data)
+
+                if b64_image:
+                    # Generate code with embedded image
+                    python_call = f"""# Bit image ({width_dots}x{height_dots} dots, mode {mode})
+img_data = base64.b64decode('''{b64_image}''')
+img = Image.open(io.BytesIO(img_data))
+p.set(align='center')
+p.image(img, impl='bitImageColumn')
+p.set(align='left')"""
+                else:
+                    # Fallback if decode fails
+                    python_call = f"# Bit image ({width_dots}x{height_dots} dots, mode {mode}) - decode failed"
+
                 self.commands.append(ParsedCommand(
                     name="bit_image",
                     escpos_bytes=data[self.position:self.position + total_size],
-                    python_call=f"# Bit image ({width_dots}x{height_dots} dots, mode {mode}) - use p.image(img, impl='bitImageColumn')",
-                    params={"width": width_dots, "height": height_dots, "mode": mode, "type": "bit_image"}
+                    python_call=python_call,
+                    params={
+                        "width": width_dots,
+                        "height": height_dots,
+                        "mode": mode,
+                        "type": "bit_image",
+                        "base64": b64_image if b64_image else None
+                    }
                 ))
                 self.position += total_size
                 self.logger.debug(f"Parsed bit image: {width_dots}x{height_dots} dots, mode {mode}")
@@ -415,6 +439,63 @@ p.set(align='left')"""
             params={"text": text}
         ))
         self.logger.debug(f"Parsed text: {len(text)} characters")
+
+    def _decode_bit_image(self, width_dots: int, height_dots: int, bytes_per_column: int, data: bytes) -> str:
+        """
+        Decode ESC * bit image data to base64 PNG
+
+        ESC * format uses column-major order (vertical strips)
+
+        Args:
+            width_dots: Width in dots
+            height_dots: Height in dots (8, 16, or 24)
+            bytes_per_column: Bytes per column (1, 2, or 3)
+            data: Raw image data
+
+        Returns:
+            Base64-encoded PNG string
+        """
+        try:
+            from PIL import Image
+            import io
+            import base64
+
+            # Create a new black and white image
+            img = Image.new('1', (width_dots, height_dots), 1)  # 1 = white background
+            pixels = img.load()
+
+            # Decode bitmap data (column-major order)
+            data_idx = 0
+            for x in range(width_dots):
+                # Read bytes for this column
+                for byte_idx in range(bytes_per_column):
+                    if data_idx >= len(data):
+                        break
+
+                    byte = data[data_idx]
+                    data_idx += 1
+
+                    # Extract 8 vertical pixels from this byte
+                    # Bit 0 (LSB) = top pixel, bit 7 (MSB) = bottom pixel
+                    for bit in range(8):
+                        y = byte_idx * 8 + bit
+                        if y >= height_dots:
+                            break
+
+                        pixel_on = (byte & (1 << bit)) != 0
+                        pixels[x, y] = 0 if pixel_on else 1  # 0 = black, 1 = white
+
+            # Convert to PNG and encode as base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            png_data = buffer.getvalue()
+            b64_data = base64.b64encode(png_data).decode('ascii')
+
+            return b64_data
+
+        except Exception as e:
+            self.logger.error(f"Failed to decode bit image: {e}")
+            return ""
 
     def _decode_raster_image(self, width_bytes: int, height_dots: int, data: bytes) -> str:
         """
