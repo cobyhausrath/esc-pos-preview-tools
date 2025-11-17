@@ -8,6 +8,7 @@ import { CommandParser, HTMLRenderer } from 'esc-pos-preview-tools';
 import { CodeModifier } from '@/utils/codeModifier';
 import { processImageForPrinting } from '@/utils/dithering';
 import { replaceBase64Image, type ImageMatch } from '@/utils/imageParser';
+import { cacheOriginalImage, getCachedImage } from '@/utils/imageCache';
 import CodeEditor from '@/components/CodeEditor';
 import ReceiptPreview from '@/components/ReceiptPreview';
 import HexView from '@/components/HexView';
@@ -15,7 +16,7 @@ import PrinterControls from '@/components/PrinterControls';
 import TemplateButtons from '@/components/TemplateButtons';
 import ImageOptionsModal from '@/components/ImageOptionsModal';
 import type { TemplateType, ReceiptData } from '@/types';
-import type { DitheringAlgorithm, ImageImplementation } from '@/components/ImageOptionsModal';
+import type { DitheringAlgorithm } from '@/components/ImageOptionsModal';
 
 const DEFAULT_CODE = EXAMPLE_CODES.basic;
 const CODE_EXECUTION_DEBOUNCE_MS = 500; // Debounce delay for auto-executing code on change
@@ -216,15 +217,14 @@ export default function Editor() {
   const handleUpdateImage = useCallback(async (
     image: ImageMatch,
     file: File,
-    dithering: DitheringAlgorithm,
-    implementation: ImageImplementation
+    dithering: DitheringAlgorithm
   ) => {
     try {
       setIsExecuting(true);
       setError(null);
 
       if (import.meta.env.DEV) {
-        console.log('[Image] Processing replacement:', file.name, file.type, dithering, implementation);
+        console.log('[Image] Processing replacement:', file.name, file.type, dithering);
       }
 
       // Validate file type
@@ -249,6 +249,31 @@ export default function Editor() {
         console.log(`[Image] Image processed: ${processedData.width}x${processedData.height}`);
       }
 
+      // Cache the original image for future dithering changes
+      // Convert ImageData to PNG base64
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              if (typeof reader.result === 'string') {
+                const base64 = reader.result.split(',')[1];
+                cacheOriginalImage(image.id, base64, img.width, img.height);
+                if (import.meta.env.DEV) {
+                  console.log('[Image] Cached original image');
+                }
+              }
+            };
+            reader.readAsDataURL(blob);
+          }
+        }, 'image/png');
+      }
+
       // Generate new base64 code for the image
       const imageCode = await generateImageCode(processedData, processedData.width, processedData.height);
 
@@ -267,7 +292,7 @@ export default function Editor() {
         newBase64,
         processedData.width,
         processedData.height,
-        implementation
+        image.implementation // Keep existing implementation
       );
 
       setCode(newCode);
@@ -286,34 +311,78 @@ export default function Editor() {
   }, [code, generateImageCode]);
 
   /**
-   * Handle updating image settings only (without replacing image)
+   * Handle redithering image from cached original
    */
-  const handleUpdateSettings = useCallback((
+  const handleRedither = useCallback(async (
     image: ImageMatch,
-    implementation: ImageImplementation
+    dithering: DitheringAlgorithm
   ) => {
     try {
+      setIsExecuting(true);
+      setError(null);
+
       if (import.meta.env.DEV) {
-        console.log('[Image] Updating settings:', implementation);
+        console.log('[Image] Redithering from cache:', dithering);
       }
 
-      // Replace settings in code
+      // Get cached original image
+      const cached = getCachedImage(image.id);
+      if (!cached) {
+        console.warn('[Image] No cached image found for:', image.id);
+        return;
+      }
+
+      // Convert cached base64 to image
+      const img = new Image();
+      const dataUrl = `data:image/png;base64,${cached.base64}`;
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Failed to load cached image'));
+        img.src = dataUrl;
+      });
+
+      // Process with new dithering algorithm
+      const processedData = await processImageForPrinting(img, 384, dithering);
+
+      if (import.meta.env.DEV) {
+        console.log(`[Image] Redithered: ${processedData.width}x${processedData.height}`);
+      }
+
+      // Generate new base64 code
+      const imageCode = await generateImageCode(processedData, processedData.width, processedData.height);
+
+      // Extract base64 data
+      const base64Match = imageCode.match(/base64\.b64decode\('''([^']+)'''\)/);
+      if (!base64Match) {
+        throw new Error('Failed to extract base64 data from generated code');
+      }
+
+      const newBase64 = base64Match[1];
+
+      // Replace the image in the existing code
       const newCode = replaceBase64Image(
         code,
         image,
-        image.base64Data, // Keep same image
-        image.width,
-        image.height,
-        implementation
+        newBase64,
+        processedData.width,
+        processedData.height,
+        image.implementation // Keep existing implementation
       );
 
       setCode(newCode);
+
+      if (import.meta.env.DEV) {
+        console.log('[Image] Redithering complete');
+      }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update settings';
-      console.error('[Image] Settings update failed:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to redither image';
+      console.error('[Image] Redithering failed:', err);
       setError(errorMessage);
+    } finally {
+      setIsExecuting(false);
     }
-  }, [code]);
+  }, [code, generateImageCode]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -488,7 +557,7 @@ export default function Editor() {
           image={selectedImage}
           onClose={() => setSelectedImage(null)}
           onUpdateImage={handleUpdateImage}
-          onUpdateSettings={handleUpdateSettings}
+          onRedither={handleRedither}
         />
       )}
     </div>

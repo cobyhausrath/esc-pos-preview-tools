@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
 import type { ImageMatch } from '@/utils/imageParser';
 import { base64ToDataUrl } from '@/utils/imageParser';
+import { hasCachedImage } from '@/utils/imageCache';
 
 export type DitheringAlgorithm = 'floyd-steinberg' | 'atkinson' | 'threshold';
-export type ImageImplementation = 'bitImageColumn' | 'bitImageRaster' | 'graphics';
 
 interface ImageOptionsModalProps {
   image: ImageMatch;
@@ -11,12 +11,11 @@ interface ImageOptionsModalProps {
   onUpdateImage: (
     image: ImageMatch,
     file: File,
-    dithering: DitheringAlgorithm,
-    implementation: ImageImplementation
+    dithering: DitheringAlgorithm
   ) => void;
-  onUpdateSettings: (
+  onRedither: (
     image: ImageMatch,
-    implementation: ImageImplementation
+    dithering: DitheringAlgorithm
   ) => void;
 }
 
@@ -24,13 +23,11 @@ export default function ImageOptionsModal({
   image,
   onClose,
   onUpdateImage,
-  onUpdateSettings,
+  onRedither,
 }: ImageOptionsModalProps) {
   const [dithering, setDithering] = useState<DitheringAlgorithm>('floyd-steinberg');
-  const [implementation, setImplementation] = useState<ImageImplementation>(
-    image.implementation || 'bitImageRaster'
-  );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasCached = hasCachedImage(image.id);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -39,14 +36,18 @@ export default function ImageOptionsModal({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      onUpdateImage(image, file, dithering, implementation);
+      onUpdateImage(image, file, dithering);
       onClose();
     }
   };
 
-  const handleApplySettings = () => {
-    onUpdateSettings(image, implementation);
-    onClose();
+  const handleDitheringChange = (newDithering: DitheringAlgorithm) => {
+    setDithering(newDithering);
+
+    // If we have a cached original image, regenerate immediately
+    if (hasCached) {
+      onRedither(image, newDithering);
+    }
   };
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -85,62 +86,25 @@ export default function ImageOptionsModal({
             </div>
           </div>
 
-          {/* Implementation Selector */}
-          <div className="option-section">
-            <h3>Print Implementation</h3>
-            <div className="option-group">
-              <label>
-                <input
-                  type="radio"
-                  value="bitImageRaster"
-                  checked={implementation === 'bitImageRaster'}
-                  onChange={(e) => setImplementation(e.target.value as ImageImplementation)}
-                />
-                <span>Bit Image Raster (GS v 0)</span>
-                <span className="option-description">
-                  Default, best compatibility
-                </span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  value="bitImageColumn"
-                  checked={implementation === 'bitImageColumn'}
-                  onChange={(e) => setImplementation(e.target.value as ImageImplementation)}
-                />
-                <span>Bit Image Column (ESC *)</span>
-                <span className="option-description">
-                  Older format, legacy printers
-                </span>
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  value="graphics"
-                  checked={implementation === 'graphics'}
-                  onChange={(e) => setImplementation(e.target.value as ImageImplementation)}
-                />
-                <span>Graphics (GS ( L)</span>
-                <span className="option-description">
-                  Modern format, high-resolution
-                </span>
-              </label>
-            </div>
-          </div>
-
-          {/* Dithering Algorithm Selector (for upload) */}
+          {/* Dithering Algorithm Selector */}
           <div className="option-section">
             <h3>Dithering Algorithm</h3>
-            <p className="option-note">
-              Used when uploading a new image
-            </p>
+            {hasCached ? (
+              <p className="option-note">
+                Changes apply immediately (original image cached)
+              </p>
+            ) : (
+              <p className="option-note">
+                Upload a new image to change dithering
+              </p>
+            )}
             <div className="option-group">
               <label>
                 <input
                   type="radio"
                   value="floyd-steinberg"
                   checked={dithering === 'floyd-steinberg'}
-                  onChange={(e) => setDithering(e.target.value as DitheringAlgorithm)}
+                  onChange={(e) => handleDitheringChange(e.target.value as DitheringAlgorithm)}
                 />
                 <span>Floyd-Steinberg</span>
                 <span className="option-description">
@@ -152,7 +116,7 @@ export default function ImageOptionsModal({
                   type="radio"
                   value="atkinson"
                   checked={dithering === 'atkinson'}
-                  onChange={(e) => setDithering(e.target.value as DitheringAlgorithm)}
+                  onChange={(e) => handleDitheringChange(e.target.value as DitheringAlgorithm)}
                 />
                 <span>Atkinson</span>
                 <span className="option-description">
@@ -164,7 +128,7 @@ export default function ImageOptionsModal({
                   type="radio"
                   value="threshold"
                   checked={dithering === 'threshold'}
-                  onChange={(e) => setDithering(e.target.value as DitheringAlgorithm)}
+                  onChange={(e) => handleDitheringChange(e.target.value as DitheringAlgorithm)}
                 />
                 <span>Threshold</span>
                 <span className="option-description">
@@ -176,8 +140,8 @@ export default function ImageOptionsModal({
         </div>
 
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={handleApplySettings}>
-            Apply Settings
+          <button className="btn-secondary" onClick={onClose}>
+            Close
           </button>
           <button className="btn-primary" onClick={handleUploadClick}>
             Upload New Image

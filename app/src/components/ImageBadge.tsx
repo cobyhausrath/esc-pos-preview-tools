@@ -30,22 +30,24 @@ export default function ImageBadge({ image, onClick }: ImageBadgeProps) {
 
   const dataUrl = base64ToDataUrl(image.base64Data);
   const displayText = image.width && image.height
-    ? `🖼️ ${image.width}x${image.height}`
-    : `🖼️ Image`;
+    ? `${image.width}x${image.height}`
+    : `Image`;
 
   return (
     <>
       <span
-        className="image-badge"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onClick={handleClick}
-        title="Click to edit image settings"
+        className="image-badge-wrapper"
       >
-        {displayText}
-        {image.implementation && (
-          <span className="image-badge-impl">{image.implementation}</span>
-        )}
+        <span className="image-badge-prefix">img_data = </span>
+        <span
+          className="image-badge"
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+          title="Click to edit image settings"
+        >
+          🖼️ {displayText}
+        </span>
       </span>
 
       {showPreview && (

@@ -1082,6 +1082,17 @@ body {
 }
 
 /* Image Badge Styles */
+.image-badge-wrapper {
+  display: inline;
+  white-space: nowrap;
+}
+
+.image-badge-prefix {
+  font-family: 'Courier New', monospace;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
 .image-badge {
   display: inline-flex;
   align-items: center;
@@ -1095,6 +1106,7 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
+  vertical-align: baseline;
 }
 
 .image-badge:hover {

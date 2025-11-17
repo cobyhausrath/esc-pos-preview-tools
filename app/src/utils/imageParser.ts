@@ -29,14 +29,15 @@ export interface ImageMatch {
 export function detectBase64Images(code: string): ImageMatch[] {
   const matches: ImageMatch[] = [];
 
-  // Pattern to match base64.b64decode with triple quotes
-  // Captures the base64 data and surrounding context
-  const pattern = /img_data\s*=\s*base64\.b64decode\('''([A-Za-z0-9+/=\s]+)'''\)/g;
+  // Pattern to match the full img_data assignment including preceding comment
+  // Captures: optional whitespace + img_data = base64.b64decode('''...''')
+  const pattern = /([ \t]*)img_data\s*=\s*base64\.b64decode\('''([A-Za-z0-9+/=\s]+)'''\)/g;
 
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(code)) !== null) {
+    const indent = match[1];
     const fullMatch = match[0];
-    const base64Data = match[1].replace(/\s+/g, ''); // Remove whitespace
+    const base64Data = match[2].replace(/\s+/g, ''); // Remove whitespace
     const startIndex = match.index;
     const endIndex = startIndex + fullMatch.length;
 
@@ -44,27 +45,28 @@ export function detectBase64Images(code: string): ImageMatch[] {
     const precedingText = code.substring(0, startIndex);
     const lineNumber = (precedingText.match(/\n/g) || []).length;
 
-    // Generate unique ID
+    // Generate unique ID based on position and base64 hash
     const id = `img_${startIndex}_${base64Data.substring(0, 8)}`;
 
-    // Try to extract dimensions from surrounding comment
+    // Try to extract dimensions from preceding comment on the same or previous line
     // Look for comment like: # Decode embedded image (384x256 dithered)
     const contextStart = Math.max(0, startIndex - 200);
-    const contextEnd = Math.min(code.length, endIndex + 200);
-    const context = code.substring(contextStart, contextEnd);
+    const context = code.substring(contextStart, endIndex);
 
     let width: number | undefined;
     let height: number | undefined;
-    const dimensionMatch = context.match(/\((\d+)x(\d+)/);
+    const dimensionMatch = context.match(/#[^\n]*\((\d+)x(\d+)/);
     if (dimensionMatch) {
       width = parseInt(dimensionMatch[1], 10);
       height = parseInt(dimensionMatch[2], 10);
     }
 
-    // Try to extract implementation type from p.image() call
+    // Try to extract implementation type from p.image() call after this
     // Look for: p.image(img, impl='bitImageRaster')
+    const contextEnd = Math.min(code.length, endIndex + 500);
+    const afterContext = code.substring(endIndex, contextEnd);
     let implementation: ImageMatch['implementation'];
-    const implMatch = context.match(/impl='(bitImageColumn|bitImageRaster|graphics)'/);
+    const implMatch = afterContext.match(/impl='(bitImageColumn|bitImageRaster|graphics)'/);
     if (implMatch) {
       implementation = implMatch[1] as ImageMatch['implementation'];
     }
