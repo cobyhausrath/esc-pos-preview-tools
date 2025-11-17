@@ -139,9 +139,11 @@ export function ContextMenu({
 
   const handleConvertToBarcode = () => {
     const text = attributes.textContent || '';
+    // Escape backslashes and single quotes for Python string safety
+    const escapedText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const action: ContextMenuAction = {
       type: 'convert',
-      pythonCode: `p.barcode('${text}', 'CODE39')`,
+      pythonCode: `p.barcode('${escapedText}', 'CODE39')`,
     };
     onAction(lineNumber, action);
     onClose();
@@ -149,9 +151,11 @@ export function ContextMenu({
 
   const handleConvertToQR = () => {
     const text = attributes.textContent || '';
+    // Escape backslashes and single quotes for Python string safety
+    const escapedText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const action: ContextMenuAction = {
       type: 'convert',
-      pythonCode: `p.qr('${text}')`,
+      pythonCode: `p.qr('${escapedText}')`,
     };
     onAction(lineNumber, action);
     onClose();
