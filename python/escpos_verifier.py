@@ -513,7 +513,19 @@ p.set(align='left')"""
         width_dots = stripes[0].params["width"]
         height_per_stripe = stripes[0].params["height"]
         mode = stripes[0].params["mode"]
-        bytes_per_column = (height_per_stripe + 7) // 8  # Round up
+
+        # Determine bytes per column based on mode
+        if mode in [32, 33]:
+            bytes_per_column_per_stripe = 3  # 24 dots
+        elif mode in [2, 3]:
+            bytes_per_column_per_stripe = 2  # 16 dots
+        elif mode in [0, 1]:
+            bytes_per_column_per_stripe = 1  # 8 dots
+        else:
+            bytes_per_column_per_stripe = 1  # default
+
+        # Total bytes per column for the combined image
+        bytes_per_column = bytes_per_column_per_stripe * len(stripes)
         total_height = height_per_stripe * len(stripes)
 
         # Extract raw image data from each stripe's escpos_bytes
