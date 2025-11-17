@@ -98,10 +98,14 @@ export function replaceBase64Image(
   newHeight?: number,
   newImplementation?: string
 ): string {
-  const { startIndex, endIndex, width, height, implementation } = imageMatch;
+  const { startIndex, endIndex, width, height, implementation, fullMatch } = imageMatch;
 
-  // Build the new img_data line with new base64
-  const newImgDataLine = `img_data = base64.b64decode('''${newBase64}''')`;
+  // Extract the indentation from the original match
+  const indentMatch = fullMatch.match(/^([ \t]*)/);
+  const indent = indentMatch ? indentMatch[1] : '';
+
+  // Build the new img_data line with new base64, preserving indentation
+  const newImgDataLine = `${indent}img_data = base64.b64decode('''${newBase64}''')`;
 
   // Replace the img_data line
   let newCode = code.substring(0, startIndex) + newImgDataLine + code.substring(endIndex);

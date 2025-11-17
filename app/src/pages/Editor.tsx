@@ -69,6 +69,25 @@ export default function Editor() {
     }
   }, []);
 
+  // Keep selectedImage in sync when code changes (for redithering)
+  useEffect(() => {
+    if (selectedImage) {
+      // Re-detect images in the updated code
+      const { detectBase64Images } = require('@/utils/imageParser');
+      const detectedImages = detectBase64Images(code);
+
+      // Find matching image by base64 data prefix (position may have changed)
+      const matchingImage = detectedImages.find(
+        img => img.base64Data.substring(0, 100) === selectedImage.base64Data.substring(0, 100)
+      );
+
+      if (matchingImage && matchingImage.id !== selectedImage.id) {
+        // Update to the new match with updated position
+        setSelectedImage(matchingImage);
+      }
+    }
+  }, [code, selectedImage]);
+
   const executeCode = useCallback(async () => {
     if (!pyodide || isPyodideLoading) return;
 
