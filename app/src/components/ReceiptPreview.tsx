@@ -659,6 +659,12 @@ export default function ReceiptPreview({
                 const isFirstStrip = isColumnImage && !isPrevColumnImage;
                 const isContinuationStrip = isColumnImage && isPrevColumnImage;
 
+                // Skip first strips that will be rendered inline with preceding text
+                const isPrevText = prevLine && !prevLine.text?.startsWith('__IMAGE__');
+                if (isFirstStrip && isPrevText) {
+                  return null; // Will be rendered with the previous text line
+                }
+
                 return (
                   <div
                     key={index}
@@ -706,20 +712,64 @@ export default function ReceiptPreview({
                 <LineTag>{line.text || '\u00A0'}</LineTag>
               );
 
+              // If this text line is followed by a first column strip, render them together
+              if (isNextColumnFirstStrip) {
+                const firstStripImageURL = nextLine!.text!.substring('__IMAGE__'.length);
+                return (
+                  <div
+                    key={index}
+                    className={`receipt-line inline-with-image ${line.align}`}
+                    data-line={line.lineNumber}
+                    data-align={line.align}
+                    data-bold={line.bold}
+                    data-underline={line.underline}
+                  >
+                    <span
+                      style={{ display: 'inline-block', verticalAlign: 'top' }}
+                      onContextMenu={handleContextMenu}
+                    >
+                      {content}
+                    </span>
+                    <div
+                      style={{ padding: 0, minHeight: 0, display: 'inline-block', verticalAlign: 'top' }}
+                      data-line={nextLine!.lineNumber}
+                      data-align={nextLine!.align}
+                      onContextMenu={handleContextMenu}
+                    >
+                      <img
+                        src={firstStripImageURL}
+                        alt={`Image ${index + 1}`}
+                        className="receipt-image"
+                        style={{
+                          display: 'inline-block',
+                          maxWidth: '100%',
+                          height: 'auto',
+                          margin: 0,
+                          verticalAlign: 'top'
+                        }}
+                        onError={(e) => {
+                          if (import.meta.env.DEV) {
+                            console.error('[Image] Failed to load image:', {
+                              src: firstStripImageURL.substring(0, 100),
+                              index: index + 1,
+                            });
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={index}
-                  className={`receipt-line ${line.align} ${isNextColumnFirstStrip ? 'before-column-first' : ''}`}
+                  className={`receipt-line ${line.align}`}
                   data-line={line.lineNumber}
                   data-align={line.align}
                   data-bold={line.bold}
                   data-underline={line.underline}
                   onContextMenu={handleContextMenu}
-                  style={
-                    isNextColumnFirstStrip
-                      ? { display: 'inline-block', verticalAlign: 'top' }
-                      : undefined
-                  }
                 >
                   {content}
                 </div>

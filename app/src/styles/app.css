@@ -1081,17 +1081,13 @@ body {
   vertical-align: top;
 }
 
-/* Text line before bitImageColumn first strip - inline-block to flow with image */
-.before-column-first {
-  display: inline-block !important;
-  vertical-align: top;
-}
-
-/* bitImageColumn first strip - inline-block with text */
-.image-column-first {
-  display: inline-block !important;
-  vertical-align: top;
+/* Text line with inline bitImageColumn first strip */
+.inline-with-image {
+  display: block;
+  width: 100%;
   line-height: 0;
+  padding: 2px 0;
+  min-height: 1.2em;
 }
 
 /* bitImageColumn continuation strips - block display with alignment */
