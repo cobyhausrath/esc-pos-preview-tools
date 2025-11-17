@@ -1,297 +1,287 @@
-# Add Real-Time Printer Status Feedback
+# Add Comprehensive python-escpos Formatting Support to Context Menu
 
 ## Summary
 
-This PR adds real-time printer status feedback to the ESC-POS printer bridge and React TypeScript editor. Users can now see detailed printer state including paper levels, cover status, online/offline state, and error conditions. The system prevents printing when errors are detected and provides clear visual feedback about printer health.
+This PR adds extensive formatting capabilities to the right-click context menu for ESC-POS preview lines, enabling users to visually modify python-escpos code with all relevant formatting options including text attributes, size controls, content conversion (barcode/QR), and image formatting.
 
 ## Problem
 
-Previously, the printer bridge only checked TCP connectivity (whether it could connect to the printer's port). Users had no visibility into:
-- Paper status (out, low, or OK)
-- Printer errors (cover open, offline, temperature issues)
-- Hardware problems that would prevent successful printing
+Previously, the context menu only supported three basic operations:
+- Toggle bold on/off
+- Toggle underline on/off
+- Change alignment (left/center/right)
 
-This made debugging print failures difficult and resulted in poor user experience when print jobs failed silently.
+This limited users' ability to quickly format receipts through the visual interface. Many python-escpos formatting capabilities were unavailable, requiring manual code editing.
 
 ## Solution
 
-### Backend (printer-bridge.js)
+Extended the context menu system to support all major python-escpos formatting capabilities:
 
-Implemented ESC-POS DLE EOT status queries to retrieve real-time printer state:
+### **Text Formatting**
+- **Font Selection**: Choose between Font A, B, or C (ESC M command)
+- **Size Controls**: Adjust width and height multipliers (1-8x) with interactive button pickers (GS ! command)
+- **Invert**: White/black reverse printing (GS B command)
+- **Flip**: Upside down/rotate 180° (ESC { command)
+- **Bold & Underline**: Existing toggles retained
 
-**Status Commands:**
-- `DLE EOT 1` (0x10 0x04 0x01) - Printer status (online/offline, drawer)
-- `DLE EOT 2` (0x10 0x04 0x02) - Off-line status (cover, paper shortage, errors)
-- `DLE EOT 3` (0x10 0x04 0x03) - Error status (cutter, temperature, unrecoverable)
-- `DLE EOT 4` (0x10 0x04 0x04) - Paper roll sensor (near-end, not present)
+### **Content Conversion**
+- **Text → Barcode**: Convert any text line to CODE39 barcode (`p.barcode()`)
+- **Text → QR Code**: Convert any text line to QR code (`p.qr()`)
+- Framework ready for reverse conversion (barcode/QR → text)
 
-**New Functions:**
-- `parseStatusByte(statusByte, queryType)` - Parses status response bytes according to Netum 80-V-UL documentation
-- `queryPrinterStatus(host, port)` - Sends status queries and returns combined status object
+### **Image Options**
+- **Implementation Format**: Switch between ESC * (column) and GS v 0 (raster) formats
+- **Alignment**: Control image positioning (left/center/right)
 
-**WebSocket Protocol Extension:**
-```json
-// Request
-{
-  "action": "status",
-  "printer": "Netum 80-V-UL"  // or custom host/port
+### **Dynamic Context Menu**
+The menu adapts based on line content type:
+- **Text lines**: Full formatting suite with conversion options
+- **Image lines**: Format selection and alignment
+- **Barcode/QR lines**: Alignment controls and conversion framework
+
+## Technical Implementation
+
+### 1. Type System (`app/src/types/index.ts`)
+Extended type definitions for comprehensive attribute tracking:
+```typescript
+export type FontType = 'a' | 'b' | 'c';
+export type LineContentType = 'text' | 'image' | 'barcode' | 'qrcode';
+
+export interface LineAttributes {
+  align: AlignmentType;
+  bold: boolean;
+  underline: boolean;
+  font?: FontType;
+  width?: number;      // 1-8x multiplier
+  height?: number;     // 1-8x multiplier
+  invert?: boolean;
+  flip?: boolean;
+  doubleWidth?: boolean;
+  doubleHeight?: boolean;
+  contentType?: LineContentType;
+  textContent?: string; // For conversion operations
 }
 
-// Response
-{
-  "success": true,
-  "status": {
-    "online": true,
-    "paperStatus": "ok" | "low" | "out" | "unknown",
-    "coverOpen": false,
-    "error": false,
-    "errorMessage": null,
-    "supported": true,
-    "details": { ... }
-  }
+export interface ContextMenuAction {
+  type: 'format' | 'convert';
+  attribute?: string;
+  value?: string | boolean | number;
+  pythonCode: string;
 }
 ```
 
-### Frontend (React TypeScript App)
+### 2. ESC-POS Parser Enhancement (`app/src/components/ReceiptPreview.tsx`)
+Added parsing for comprehensive ESC-POS commands:
 
-**Type Definitions (app/src/types/index.ts):**
-- `PaperStatus` type: 'ok' | 'low' | 'out' | 'unknown'
-- `PrinterStatus` interface with full status fields
+| Command | Purpose | Implementation |
+|---------|---------|----------------|
+| ESC M (0x1B 0x4D) | Font selection | Tracks currentFont: 'a', 'b', or 'c' |
+| ESC ! (0x1B 0x21) | Print mode | Extracts font, bold, double width/height, underline from bit flags |
+| ESC { (0x1B 0x7B) | Upside down | Tracks flip state |
+| GS ! (0x1D 0x21) | Character size | Extracts width/height multipliers from bit fields |
+| GS B (0x1D 0x42) | Reverse printing | Tracks invert state |
 
-**Hook Enhancement (app/src/hooks/usePrinterClient.ts):**
-- Added `printerStatus` state
-- Added `queryStatus()` method for WebSocket status requests
-- Integrated status updates into message handling
+**Helper Function**: `pushCurrentLine()` consolidates line creation with all attributes to ensure consistency.
 
-**UI Component (app/src/components/PrinterControls.tsx):**
-- "🔍 Status" button for manual status checks
-- Enhanced connection indicator with color coding:
-  - 🟢 Green: Online and OK
-  - 🟡 Yellow: Warning (paper low)
-  - 🔴 Red: Error (paper out, cover open, offline)
-- Detailed status display (paper, cover status)
-- Smart print button - disabled when printer has errors
-- Automatic status check on connection
+### 3. Context Menu UI (`app/src/components/ContextMenu.tsx`)
+Complete redesign with dynamic, content-aware interface:
 
-**Styling (app/src/styles/app.css):**
-- Status indicator colors (green/yellow/red)
-- Status text and details layout
-- Warning and error state styles
+**Text Lines UI:**
+- Toggle switches with ON/OFF badges (bold, underline, invert, flip)
+- Radio button groups (font A/B/C, alignment)
+- Size picker buttons (8 buttons × 2 dimensions = 16 total controls)
+- Conversion actions with icons (📊 Barcode, ⬛ QR Code)
 
-## Technical Details
+**Styling** (app/src/styles/app.css):
+```css
+.context-menu .size-btn {
+  background: #1e1e1e;
+  border: 1px solid #3e3e3e;
+  /* ... */
+}
 
-### Bit Field Parsing
-
-Status bytes are parsed according to Netum 80-V-UL ESC-POS documentation:
-
-**n=1 (Printer Status):**
-- Bit 2 (0x04): Drawer open/close
-- Bit 3 (0x08): Online/offline (inverted: 0=online, 1=offline)
-- Bit 5 (0x20): Waiting for recovery
-
-**n=2 (Off-line Status):**
-- Bit 2 (0x04): Top cover open/close
-- Bit 3 (0x08): Paper feed button pressed
-- Bit 5 (0x20): Paper shortage (low paper)
-- Bit 6 (0x40): General error flag
-
-**n=3 (Error Status):**
-- Bit 3 (0x08): Auto-cutter error
-- Bit 5 (0x20): Unrecoverable error
-- Bit 6 (0x40): Temperature error
-
-**n=4 (Paper Roll Sensor):**
-- Bits 2-3 (0x0C): Paper near-end (exact match = 0x0C)
-- Bits 5-6 (0x60): Paper not present (exact match = 0x60)
-
-### Multi-bit Field Logic
-
-Critical fix for paper sensor parsing:
-```javascript
-// INCORRECT (checks if ANY bit set):
-status.paperNearEnd = !!(statusByte & 0x0C);
-
-// CORRECT (checks for exact value):
-status.paperNearEnd = (statusByte & 0x0C) === 0x0C;
+.context-menu .size-btn.active {
+  background: #0e639c;  /* Blue highlight */
+  border-color: #1177bb;
+  color: #ffffff;
+}
 ```
 
-### TCP Stream Handling
+### 4. Code Modifier (`app/src/utils/codeModifier.ts`)
+Extended with powerful new methods:
 
-Robust handling for variable-length TCP responses:
-```javascript
-client.on('data', (data) => {
-    if (data.length === 1) {
-        // Expected: single status byte
-    } else if (data.length > 1) {
-        // Multiple responses in one chunk
-        for (const byte of data) { /* process each */ }
-    } else {
-        // Empty chunk, ignore
-    }
-});
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `setGenericAttribute()` | Set any formatting attribute | `p.set(invert=True)` |
+| `changeFont()` | Change font selection | `p.set(font='b')` |
+| `changeSize()` | Modify width/height | `p.set(width=2)` |
+| `convertTextToBarcode()` | Replace `p.text()` with `p.barcode()` | `p.barcode('123', 'CODE39')` |
+| `convertTextToQR()` | Replace `p.text()` with `p.qr()` | `p.qr('https://...')` |
+| `changeImageFormat()` | Modify image impl | `p.image(img, impl='bitImageRaster')` |
+| **`applyCommand()`** | **Unified command parser** | Handles all command types |
+
+**Key Innovation - `applyCommand()` Method:**
+```typescript
+applyCommand(lineNumber: number, pythonCode: string): void {
+  const codeLineNumber = this.findCodeLineForPreviewLine(lineNumber);
+
+  // Intelligently parse and apply any python-escpos command
+  if (pythonCode.includes('p.set('))      { /* extract & apply */ }
+  else if (pythonCode.includes('p.barcode(')) { /* convert */ }
+  else if (pythonCode.includes('p.qr('))      { /* convert */ }
+  else if (pythonCode.includes('p.image('))   { /* modify */ }
+}
 ```
 
-### Paper Status Priority
-
+### 5. Editor Integration (`app/src/pages/Editor.tsx`)
+Simplified to use unified API:
+```typescript
+const handleContextMenuAction = useCallback((lineNumber: number, pythonCode: string) => {
+  const modifier = new CodeModifier(code);
+  modifier.applyCommand(lineNumber, pythonCode);  // Single entry point
+  setCode(modifier.getModifiedCode());
+}, [code]);
 ```
-if (paperNotPresent) → 'out' + error
-else if (paperNearEnd OR paperShortage) → 'low' (warning)
-else → 'ok'
-```
 
-### Error Handling
+## ESC-POS Coverage
 
-- Gracefully handles printers that don't support status queries
-- Returns `supported: false` with basic connectivity status
-- Timeout protection (2s per query, reset after each response)
-- Proper async event listener cleanup to prevent race conditions
+| Category | Coverage | Commands |
+|----------|----------|----------|
+| Text Attributes | ✅ Complete | ESC E, ESC -, ESC !, ESC M, ESC { |
+| Character Size | ✅ Complete | GS ! (width/height 1-8x) |
+| Visual Effects | ✅ Complete | GS B (invert) |
+| Alignment | ✅ Complete | ESC a (left/center/right) |
+| Barcodes | ✅ Complete | Conversion to p.barcode() |
+| QR Codes | ✅ Complete | Conversion to p.qr() |
+| Images | ✅ Complete | Format switching (column/raster) |
 
-## Code Review Feedback Addressed
+## User Experience Flow
 
-All critical and important issues from PR review have been fixed:
-
-### Critical Issues Fixed:
-1. ✅ **TCP Stream Handling**: Added proper handling for data.length !== 1 cases
-2. ✅ **Missing DLE EOT 3**: Added error status query to queries array
-3. ✅ **Timeout Reset**: Added `client.setTimeout()` reset after each response
-4. ✅ **Race Conditions**: Fixed async event listener cleanup
-
-### Important Issues Fixed:
-5. ✅ **Constants**: Added STATUS_TIMEOUT_MS and QUERY_DELAY_MS
-6. ✅ **Logging**: Added comprehensive debug logging
-7. ✅ **Error Messages**: Made consistent ("Printer is offline", etc.)
-8. ✅ **Module Exports**: Exported parseStatusByte and queryPrinterStatus
-
-### Improvements:
-9. ✅ **TypeScript Types**: Full type safety with strict interfaces
-10. ✅ **React Integration**: Clean hook-based architecture
-11. ✅ **State Management**: Proper useState with cleanup
-
-## Testing Instructions
-
-### Manual Testing
-
-1. **Start the printer bridge:**
-   ```bash
-   ./bin/printer-bridge.js
-   ```
-
-2. **Start React app:**
-   ```bash
-   cd app
-   yarn dev
-   ```
-
-3. **Test status queries:**
-   - Select "Netum 80-V-UL" from printer dropdown
-   - Click "Connect to Printer"
-   - Status should automatically query after connection
-   - Verify status indicator color and text
-   - Click "🔍 Status" button for manual check
-
-4. **Test error states:**
-   - Open printer cover → Should show red indicator, "Cover open" error
-   - Remove paper → Should show red indicator, "Paper out" error
-   - Load low paper → Should show yellow indicator, "Paper Low" warning
-   - Print button should be disabled during errors
-
-5. **Test status details:**
-   - Verify status details show:
-     - Paper status with icon (✓/⚠️/✗)
-     - Cover status (OPEN/CLOSED)
-
-### Expected Behavior
-
-**Normal Operation:**
-- 🟢 Green dot with "Online" text
-- Print button enabled (when bytes available)
-- Status details: "Paper: ✓ OK • Cover: ✓ CLOSED"
-
-**Paper Low:**
-- 🟡 Yellow dot with "Paper Low" text
-- Print button enabled (warning only)
-- Status details: "Paper: ⚠️ LOW • Cover: ✓ CLOSED"
-
-**Paper Out:**
-- 🔴 Red dot with "Paper out" text
-- Print button disabled
-- Status details: "Paper: ✗ OUT • Cover: ✓ CLOSED"
-
-**Cover Open:**
-- 🔴 Red dot with "Cover open" text
-- Print button disabled
-- Status details: "Paper: ... • Cover: ⚠️ OPEN"
+1. **Right-click** on any preview line
+2. **Context menu appears** with options specific to that line type
+3. **Select formatting option** (e.g., Font B, width 2x, invert ON)
+4. **Code automatically updates** with appropriate python-escpos call
+5. **Preview refreshes** automatically showing changes
 
 ## Files Changed
 
-### Backend
-- **bin/printer-bridge.js** (+240 lines)
-  - Added `parseStatusByte()` function with complete bit field parsing
-  - Added `queryPrinterStatus()` function with robust TCP handling
-  - Added 'status' WebSocket action handler
-  - Added constants (STATUS_TIMEOUT_MS, QUERY_DELAY_MS)
-  - Added comprehensive debug logging
-  - Exported functions for testing
+### Core Implementation
+- **app/src/types/index.ts** (+54 lines)
+  - Added FontType, LineContentType types
+  - Extended LineAttributes with 9 new optional fields
+  - Added ContextMenuAction interface
+  - Updated ContextMenuProps with onAction callback
 
-### Frontend (React TypeScript)
-- **app/src/types/index.ts** (+12 lines)
-  - Added `PaperStatus` type
-  - Added `PrinterStatus` interface
+- **app/src/components/ReceiptPreview.tsx** (+280 lines, -60 lines)
+  - Added parsing for ESC M, ESC !, ESC {, GS !, GS B
+  - Added pushCurrentLine() helper function
+  - Extended state tracking for all formatting attributes
+  - Enhanced handleContextMenu to pass content type and text
 
-- **app/src/hooks/usePrinterClient.ts** (+35 lines)
-  - Added `printerStatus` state
-  - Added `queryStatus()` method
-  - Integrated status handling in message listener
+- **app/src/components/ContextMenu.tsx** (+294 lines, -50 lines)
+  - Complete UI redesign with dynamic content
+  - Added size picker buttons with active states
+  - Added font and conversion option sections
+  - Implemented content-type-aware rendering
 
-- **app/src/components/PrinterControls.tsx** (+60 lines)
-  - Added `isCheckingStatus` state
-  - Added `handleCheckStatus()` function
-  - Added `getStatusIndicatorClass()` helper
-  - Added `getStatusText()` helper
-  - Added status indicator with color coding
-  - Added "🔍 Status" button
-  - Added status details display
-  - Added automatic status check on connect
-  - Updated print button disable logic
+- **app/src/utils/codeModifier.ts** (+209 lines)
+  - Added setGenericAttribute(), changeFont(), changeSize()
+  - Added convertTextToBarcode(), convertTextToQR()
+  - Added changeImageFormat() for image impl switching
+  - Added unified applyCommand() parser method
 
-- **app/src/styles/app.css** (+15 lines)
-  - Added status indicator warning/error colors
-  - Added status-text and status-details styles
+- **app/src/pages/Editor.tsx** (-25 lines, +5 lines)
+  - Simplified handleContextMenuAction to use applyCommand()
+  - Removed manual parsing logic (now in CodeModifier)
 
-## Commits
+### Styling
+- **app/src/styles/app.css** (+45 lines)
+  - Added .size-controls flex layout
+  - Added .size-btn styles with hover/active states
+  - Chrome DevTools-inspired color scheme
 
-1. `47080c0` - feat: add real-time printer status feedback
-2. `bfd456a` - fix: correct printer status bit parsing per documentation
-3. `5b0211c` - docs: add comprehensive PR description
-4. `d0aaab6` - fix: address critical PR review issues
-5. `0f3d2d4` - feat: port printer status feedback to React app
+## Testing
+
+### Manual Testing Steps
+
+1. **Start React dev server:**
+   ```bash
+   cd app
+   npm run dev  # or yarn dev
+   ```
+
+2. **Test text formatting:**
+   - Create receipt with text: `p.text("Hello World\n")`
+   - Right-click preview line
+   - Try each formatting option:
+     - ✓ Font selection (A/B/C)
+     - ✓ Size controls (width 1-8, height 1-8)
+     - ✓ Bold, underline, invert, flip toggles
+     - ✓ Alignment changes
+   - Verify code updates correctly with `p.set()` calls
+
+3. **Test content conversion:**
+   - Right-click text line
+   - Click "📊 Barcode" → Verify code changes to `p.barcode('Hello World', 'CODE39')`
+   - Undo and click "⬛ QR Code" → Verify code changes to `p.qr('Hello World')`
+
+4. **Test image formatting:**
+   - Upload an image
+   - Right-click image in preview
+   - Switch between "Column Format (ESC *)" and "Raster Format (GS v 0)"
+   - Verify `impl` parameter changes in `p.image()` call
+
+5. **Test edge cases:**
+   - Multiple consecutive `p.set()` calls (should update existing, not duplicate)
+   - Indented code (should preserve indentation)
+   - Comments (should skip comment lines when finding p.text())
+
+### Expected Behavior
+
+**Size Picker Buttons:**
+- Current value should be highlighted in blue
+- Clicking a button should immediately update code
+- Preview should refresh showing new size
+
+**Toggle Switches:**
+- Should show checkmark (✓) when ON, empty box (☐) when OFF
+- Badge should show "ON" or "OFF" state
+- Clicking should toggle state and update code
+
+**Content Type Detection:**
+- Text lines: Show full formatting suite
+- Image lines: Show only impl format and alignment
+- Future barcode/QR: Show alignment and conversion options
 
 ## Benefits
 
-✅ **Real-time visibility** into printer state
-✅ **Prevents failed prints** by detecting errors before sending
-✅ **Better UX** with clear error messages and visual feedback
-✅ **Reduced debugging time** with detailed status information
-✅ **Graceful degradation** for printers without status support
-✅ **Standard ESC-POS commands** - compatible with most thermal printers
-✅ **Type-safe** React TypeScript implementation
-✅ **Robust** TCP stream handling and error recovery
+✅ **Visual editing**: No manual code editing needed for formatting
+✅ **Discoverability**: Users can explore python-escpos features through UI
+✅ **Speed**: Fast formatting changes with instant preview
+✅ **Accuracy**: Generated code is syntactically correct
+✅ **Flexibility**: Supports all major python-escpos formatting options
+✅ **Extensibility**: Easy to add new formatting options (follow existing patterns)
 
 ## Future Enhancements
 
 Potential improvements for future PRs:
-- Periodic status polling (configurable interval)
-- Status history/logging
-- Desktop notifications for error conditions
-- Support for additional printer models with different status bit mappings
-- Status indicator in browser tab/favicon
+- Additional barcode types (EAN13, UPC-A, QR options)
+- Barcode/QR → text conversion (framework ready)
+- Font size preview in context menu
+- Batch formatting (apply to multiple lines)
+- Keyboard shortcuts for common formatting
+- Smooth/anti-aliasing toggle (when supported)
+- Custom character spacing/line height
+
+## Compatibility
+
+- ✅ **Backward compatible**: Existing code continues to work
+- ✅ **Graceful degradation**: Unknown commands shown in "Commands Applied" section
+- ✅ **Type-safe**: Full TypeScript coverage with strict types
+- ✅ **Standards-compliant**: Uses standard ESC-POS commands
 
 ## References
 
-- ESC-POS Command Reference: DLE EOT commands
-- Netum 80-V-UL Printer Documentation (provided in issue)
-- [Epson ESC-POS Documentation](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/dle_eot.html)
-
-## Migration Note
-
-This PR replaces the web/editor.html implementation with a React TypeScript version. The legacy HTML editor was deleted from main branch during the React migration. All functionality has been ported to the React app with improvements.
+- ESC-POS Command Reference: [Epson Documentation](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/)
+- python-escpos: [Documentation](https://python-escpos.readthedocs.io/)
+- Project architecture: `CLAUDE.md` section "Architecture: Python vs TypeScript Boundaries"

@@ -4,6 +4,10 @@ import {
   CommandMetadata,
   AlignmentType,
   ContextMenuPosition,
+  ContextMenuAction,
+  FontType,
+  LineContentType,
+  LineAttributes,
 } from '../types';
 import { ContextMenu } from './ContextMenu';
 import { decodeRasterImage } from '@/utils/rasterDecoder';
@@ -115,7 +119,7 @@ export default function ReceiptPreview({
 }: ReceiptPreviewProps) {
   const [contextMenu, setContextMenu] = useState<{
     lineNumber: number;
-    attributes: { align: AlignmentType; bold: boolean; underline: boolean };
+    attributes: LineAttributes;
     commands: CommandMetadata[];
     position: ContextMenuPosition;
   } | null>(null);
@@ -127,6 +131,16 @@ export default function ReceiptPreview({
       align: AlignmentType;
       bold: boolean;
       underline: boolean;
+      font?: FontType;
+      width?: number;
+      height?: number;
+      invert?: boolean;
+      flip?: boolean;
+      smooth?: boolean;
+      doubleWidth?: boolean;
+      doubleHeight?: boolean;
+      contentType?: LineContentType;
+      textContent?: string;
       lineNumber: number;
     }>
   >([]);
@@ -139,6 +153,16 @@ export default function ReceiptPreview({
         align: AlignmentType;
         bold: boolean;
         underline: boolean;
+        font?: FontType;
+        width?: number;
+        height?: number;
+        invert?: boolean;
+        flip?: boolean;
+        smooth?: boolean;
+        doubleWidth?: boolean;
+        doubleHeight?: boolean;
+        contentType?: LineContentType;
+        textContent?: string;
         lineNumber: number;
       }> = [];
       const newCommandMap = new Map<number, LineState>();
@@ -147,9 +171,55 @@ export default function ReceiptPreview({
       let currentAlign: AlignmentType = 'left';
       let currentBold = false;
       let currentUnderline = false;
+      let currentFont: FontType = 'a';
+      let currentWidth = 1;
+      let currentHeight = 1;
+      let currentInvert = false;
+      let currentFlip = false;
+      let currentSmooth = false;
+      let currentDoubleWidth = false;
+      let currentDoubleHeight = false;
       let currentLine = '';
       let lineCount = 0;
       let i = 0;
+
+      // Helper function to push current line with all attributes
+      const pushCurrentLine = () => {
+        lines.push({
+          text: currentLine,
+          align: currentAlign,
+          bold: currentBold,
+          underline: currentUnderline,
+          font: currentFont,
+          width: currentWidth,
+          height: currentHeight,
+          invert: currentInvert,
+          flip: currentFlip,
+          smooth: currentSmooth,
+          doubleWidth: currentDoubleWidth,
+          doubleHeight: currentDoubleHeight,
+          contentType: 'text',
+          textContent: currentLine,
+          lineNumber: lineCount,
+        });
+        newCommandMap.set(lineCount, {
+          align: currentAlign,
+          bold: currentBold,
+          underline: currentUnderline,
+          font: currentFont,
+          width: currentWidth,
+          height: currentHeight,
+          invert: currentInvert,
+          flip: currentFlip,
+          smooth: currentSmooth,
+          doubleWidth: currentDoubleWidth,
+          doubleHeight: currentDoubleHeight,
+          commands: [...lineCommands],
+        });
+        lineCount++;
+        lineCommands = [];
+        currentLine = '';
+      };
 
       while (i < bytes.length) {
         const byte = bytes[i];
@@ -171,22 +241,7 @@ export default function ReceiptPreview({
           // ESC a - Alignment
           if (cmd === 0x61 && i + 2 < bytes.length) {
             if (currentLine) {
-              lines.push({
-                text: currentLine,
-                align: currentAlign,
-                bold: currentBold,
-                underline: currentUnderline,
-                lineNumber: lineCount,
-              });
-              newCommandMap.set(lineCount, {
-                align: currentAlign,
-                bold: currentBold,
-                underline: currentUnderline,
-                commands: [...lineCommands],
-              });
-              lineCount++;
-              lineCommands = [];
-              currentLine = '';
+              pushCurrentLine();
             }
             const align = bytes[i + 2];
             currentAlign =
@@ -224,14 +279,50 @@ export default function ReceiptPreview({
             continue;
           }
 
-          // ESC ! - Print mode (size, emphasis, etc.)
+          // ESC ! - Print mode (font, emphasis, double height, double width, underline)
           if (cmd === 0x21 && i + 2 < bytes.length) {
             const mode = bytes[i + 2];
-            // Note: Size changes not yet supported in preview, just consume the command
+            // Bit 0: Font B (0=Font A, 1=Font B)
+            const fontB = (mode & 0x01) !== 0;
+            currentFont = fontB ? 'b' : 'a';
+            // Bit 3: Emphasis (bold)
+            currentBold = (mode & 0x08) !== 0;
+            // Bit 4: Double height
+            currentDoubleHeight = (mode & 0x10) !== 0;
+            // Bit 5: Double width
+            currentDoubleWidth = (mode & 0x20) !== 0;
+            // Bit 7: Underline
+            currentUnderline = (mode & 0x80) !== 0;
+
             lineCommands.push({
               type: 'size',
               value: mode,
-              pythonCode: `p.set(/* mode=${mode} */)`,
+              pythonCode: `p.set(font='${currentFont}', bold=${currentBold}, double_height=${currentDoubleHeight}, double_width=${currentDoubleWidth}, underline=${currentUnderline ? '1' : '0'})`,
+            });
+            i += 3;
+            continue;
+          }
+
+          // ESC M - Font selection
+          if (cmd === 0x4d && i + 2 < bytes.length) {
+            const fontMode = bytes[i + 2];
+            currentFont = fontMode === 0 ? 'a' : fontMode === 1 ? 'b' : 'c';
+            lineCommands.push({
+              type: 'font',
+              value: currentFont,
+              pythonCode: `p.set(font='${currentFont}')`,
+            });
+            i += 3;
+            continue;
+          }
+
+          // ESC { - Upside down mode
+          if (cmd === 0x7b && i + 2 < bytes.length) {
+            currentFlip = bytes[i + 2] !== 0;
+            lineCommands.push({
+              type: 'flip',
+              value: currentFlip,
+              pythonCode: `p.set(flip=${currentFlip ? 'True' : 'False'})`,
             });
             i += 3;
             continue;
@@ -293,22 +384,7 @@ export default function ReceiptPreview({
 
               // Flush current line if exists
               if (currentLine) {
-                lines.push({
-                  text: currentLine,
-                  align: currentAlign,
-                  bold: currentBold,
-                  underline: currentUnderline,
-                  lineNumber: lineCount,
-                });
-                newCommandMap.set(lineCount, {
-                  align: currentAlign,
-                  bold: currentBold,
-                  underline: currentUnderline,
-                  commands: [...lineCommands],
-                });
-                lineCount++;
-                lineCommands = [];
-                currentLine = '';
+                pushCurrentLine();
               }
 
               // Add image as a special line with data URL
@@ -317,6 +393,7 @@ export default function ReceiptPreview({
                 align: currentAlign, // Use current alignment instead of hardcoding
                 bold: false,
                 underline: false,
+                contentType: 'image',
                 lineNumber: lineCount,
               });
               lineCount++;
@@ -349,31 +426,45 @@ export default function ReceiptPreview({
         if (byte === 0x1d && i + 1 < bytes.length) {
           const cmd = bytes[i + 1];
 
+          // GS ! - Character size
+          if (cmd === 0x21 && i + 2 < bytes.length) {
+            const size = bytes[i + 2];
+            // Lower 3 bits: width multiplier (1-8)
+            currentWidth = (size & 0x07) + 1;
+            // Upper 3 bits: height multiplier (1-8)
+            currentHeight = ((size >> 4) & 0x07) + 1;
+            lineCommands.push({
+              type: 'size',
+              value: size,
+              pythonCode: `p.set(width=${currentWidth}, height=${currentHeight})`,
+            });
+            i += 3;
+            continue;
+          }
+
+          // GS B - White/black reverse printing
+          if (cmd === 0x42 && i + 2 < bytes.length) {
+            currentInvert = bytes[i + 2] !== 0;
+            lineCommands.push({
+              type: 'invert',
+              value: currentInvert,
+              pythonCode: `p.set(invert=${currentInvert ? 'True' : 'False'})`,
+            });
+            i += 3;
+            continue;
+          }
+
           // GS V - Cut
           if (cmd === 0x56 && i + 2 < bytes.length) {
             if (currentLine) {
-              lines.push({
-                text: currentLine,
-                align: currentAlign,
-                bold: currentBold,
-                underline: currentUnderline,
-                lineNumber: lineCount,
-              });
-              newCommandMap.set(lineCount, {
-                align: currentAlign,
-                bold: currentBold,
-                underline: currentUnderline,
-                commands: [...lineCommands],
-              });
-              lineCount++;
-              lineCommands = [];
-              currentLine = '';
+              pushCurrentLine();
             }
             lines.push({
               text: '--- ✂ ---',
               align: 'center',
               bold: false,
               underline: false,
+              contentType: 'text',
               lineNumber: lineCount,
             });
             lineCount++;
@@ -445,22 +536,7 @@ export default function ReceiptPreview({
 
                 // Flush current line if exists
                 if (currentLine) {
-                  lines.push({
-                    text: currentLine,
-                    align: currentAlign,
-                    bold: currentBold,
-                    underline: currentUnderline,
-                    lineNumber: lineCount,
-                  });
-                  newCommandMap.set(lineCount, {
-                    align: currentAlign,
-                    bold: currentBold,
-                    underline: currentUnderline,
-                    commands: [...lineCommands],
-                  });
-                  lineCount++;
-                  lineCommands = [];
-                  currentLine = '';
+                  pushCurrentLine();
                 }
 
                 // Add image as a special line with data URL
@@ -469,6 +545,7 @@ export default function ReceiptPreview({
                   align: currentAlign,
                   bold: false,
                   underline: false,
+                  contentType: 'image',
                   lineNumber: lineCount,
                 });
                 lineCount++;
@@ -511,22 +588,7 @@ export default function ReceiptPreview({
 
         // Line feed
         if (byte === 0x0a) {
-          lines.push({
-            text: currentLine,
-            align: currentAlign,
-            bold: currentBold,
-            underline: currentUnderline,
-            lineNumber: lineCount,
-          });
-          newCommandMap.set(lineCount, {
-            align: currentAlign,
-            bold: currentBold,
-            underline: currentUnderline,
-            commands: [...lineCommands],
-          });
-          lineCount++;
-          lineCommands = [];
-          currentLine = '';
+          pushCurrentLine();
           i++;
           continue;
         }
@@ -544,19 +606,7 @@ export default function ReceiptPreview({
 
       // Flush remaining line
       if (currentLine) {
-        lines.push({
-          text: currentLine,
-          align: currentAlign,
-          bold: currentBold,
-          underline: currentUnderline,
-          lineNumber: lineCount,
-        });
-        newCommandMap.set(lineCount, {
-          align: currentAlign,
-          bold: currentBold,
-          underline: currentUnderline,
-          commands: [...lineCommands],
-        });
+        pushCurrentLine();
       }
 
       // Update state
@@ -587,18 +637,31 @@ export default function ReceiptPreview({
       const lineState = commandMap.get(lineNumber);
       if (!lineState) return;
 
+      // Get the preview line to access content type and text
+      const previewLine = previewLines.find(l => l.lineNumber === lineNumber);
+
       setContextMenu({
         lineNumber,
         attributes: {
           align: lineState.align,
           bold: lineState.bold,
           underline: lineState.underline,
+          font: lineState.font,
+          width: lineState.width,
+          height: lineState.height,
+          invert: lineState.invert,
+          flip: lineState.flip,
+          smooth: lineState.smooth,
+          doubleWidth: lineState.doubleWidth,
+          doubleHeight: lineState.doubleHeight,
+          contentType: previewLine?.contentType || 'text',
+          textContent: previewLine?.textContent,
         },
         commands: lineState.commands,
         position: { x: event.pageX, y: event.pageY },
       });
     },
-    [commandMap]
+    [commandMap, previewLines]
   );
 
   // Handle context menu actions
@@ -625,6 +688,13 @@ export default function ReceiptPreview({
   const handleChangeAlignment = useCallback(
     (lineNumber: number, newAlign: AlignmentType) => {
       onContextMenuAction(lineNumber, `p.set(align='${newAlign}')`);
+    },
+    [onContextMenuAction]
+  );
+
+  const handleAction = useCallback(
+    (lineNumber: number, action: ContextMenuAction) => {
+      onContextMenuAction(lineNumber, action.pythonCode);
     },
     [onContextMenuAction]
   );
@@ -715,6 +785,7 @@ export default function ReceiptPreview({
           onToggleBold={handleToggleBold}
           onToggleUnderline={handleToggleUnderline}
           onChangeAlignment={handleChangeAlignment}
+          onAction={handleAction}
         />
       )}
     </div>
