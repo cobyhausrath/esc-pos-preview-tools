@@ -191,20 +191,36 @@ class EscPosVerifier:
             width_dots = nL + (nH * 256)
 
             # Calculate data bytes based on mode
-            # Mode determines vertical dot density
-            # For simplicity, we'll use a common formula
-            data_bytes = width_dots
+            # Mode determines vertical dot density:
+            # 0, 1: 8 dots (1 byte per column)
+            # 2, 3: 16 dots (2 bytes per column)
+            # 32, 33: 24 dots (3 bytes per column)
+            if mode in [0, 1]:
+                bytes_per_column = 1
+                height_dots = 8
+            elif mode in [2, 3]:
+                bytes_per_column = 2
+                height_dots = 16
+            elif mode in [32, 33]:
+                bytes_per_column = 3
+                height_dots = 24
+            else:
+                # Unknown mode, guess 1 byte per column
+                bytes_per_column = 1
+                height_dots = 8
+
+            data_bytes = width_dots * bytes_per_column
             total_size = 5 + data_bytes
 
             if self.position + total_size <= len(data):
                 self.commands.append(ParsedCommand(
                     name="bit_image",
                     escpos_bytes=data[self.position:self.position + total_size],
-                    python_call=f"# TODO: Image ({width_dots} dots wide, mode {mode}) - use p.image(img, impl='bitImageColumn')",
-                    params={"width": width_dots, "mode": mode, "type": "bit_image"}
+                    python_call=f"# Bit image ({width_dots}x{height_dots} dots, mode {mode}) - use p.image(img, impl='bitImageColumn')",
+                    params={"width": width_dots, "height": height_dots, "mode": mode, "type": "bit_image"}
                 ))
                 self.position += total_size
-                self.logger.debug(f"Parsed bit image: {width_dots} dots, mode {mode}")
+                self.logger.debug(f"Parsed bit image: {width_dots}x{height_dots} dots, mode {mode}")
             else:
                 # Not enough data
                 self.position += 2
@@ -308,16 +324,36 @@ class EscPosVerifier:
 
                 if self.position + total_size <= len(data):
                     width_pixels = width_bytes * 8
+
+                    # Extract image data
+                    image_data = data[self.position + 8:self.position + total_size]
+
+                    # Try to decode the image
+                    b64_image = self._decode_raster_image(width_bytes, height_dots, image_data)
+
+                    if b64_image:
+                        # Generate code with embedded image
+                        python_call = f"""# Raster image ({width_pixels}x{height_dots}px)
+img_data = base64.b64decode('''{b64_image}''')
+img = Image.open(io.BytesIO(img_data))
+p.set(align='center')
+p.image(img, impl='bitImageRaster')
+p.set(align='left')"""
+                    else:
+                        # Fallback if decode fails
+                        python_call = f"# TODO: Image ({width_pixels}x{height_dots}px) - decode failed"
+
                     self.commands.append(ParsedCommand(
                         name="raster_image",
                         escpos_bytes=data[self.position:self.position + total_size],
-                        python_call=f"# TODO: Image ({width_pixels}x{height_dots}px) - use p.image(img, impl='bitImageRaster')",
+                        python_call=python_call,
                         params={
                             "width_bytes": width_bytes,
                             "width_pixels": width_pixels,
                             "height": height_dots,
                             "mode": mode,
-                            "type": "raster_image"
+                            "type": "raster_image",
+                            "base64": b64_image if b64_image else None
                         }
                     ))
                     self.position += total_size
@@ -380,6 +416,61 @@ class EscPosVerifier:
         ))
         self.logger.debug(f"Parsed text: {len(text)} characters")
 
+    def _decode_raster_image(self, width_bytes: int, height_dots: int, data: bytes) -> str:
+        """
+        Decode raster image data to base64 PNG
+
+        Args:
+            width_bytes: Width in bytes (each byte = 8 pixels)
+            height_dots: Height in dots/pixels
+            data: Raw image data
+
+        Returns:
+            Base64-encoded PNG string
+        """
+        try:
+            from PIL import Image
+            import io
+            import base64
+
+            width_pixels = width_bytes * 8
+
+            # Create a new black and white image
+            img = Image.new('1', (width_pixels, height_dots), 1)  # 1 = white background
+            pixels = img.load()
+
+            # Decode bitmap data (row-major order)
+            data_idx = 0
+            for y in range(height_dots):
+                for x_byte in range(width_bytes):
+                    if data_idx >= len(data):
+                        break
+
+                    byte = data[data_idx]
+                    data_idx += 1
+
+                    # Extract 8 horizontal pixels from this byte
+                    # GS v 0 format: bit 7 (MSB) = leftmost pixel, bit 0 (LSB) = rightmost
+                    for bit in range(8):
+                        x = x_byte * 8 + (7 - bit)
+                        if x >= width_pixels:
+                            break
+
+                        pixel_on = (byte & (1 << bit)) != 0
+                        pixels[x, y] = 0 if pixel_on else 1  # 0 = black, 1 = white
+
+            # Convert to PNG and encode as base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            png_data = buffer.getvalue()
+            b64_data = base64.b64encode(png_data).decode('ascii')
+
+            return b64_data
+
+        except Exception as e:
+            self.logger.error(f"Failed to decode raster image: {e}")
+            return ""
+
     def generate_python_code(self, commands: List[ParsedCommand],
                             printer_class: str = "Dummy") -> str:
         """
@@ -392,14 +483,30 @@ class EscPosVerifier:
         Returns:
             Complete Python script as string
         """
-        lines = [
-            "from escpos.printer import Dummy",
-            "",
+        # Check if we need PIL for images
+        has_images = any(cmd.name in ['raster_image', 'bit_image'] for cmd in commands)
+
+        lines = []
+        if has_images:
+            lines.extend([
+                "from escpos.printer import Dummy",
+                "from PIL import Image",
+                "import io",
+                "import base64",
+                "",
+            ])
+        else:
+            lines.extend([
+                "from escpos.printer import Dummy",
+                "",
+            ])
+
+        lines.extend([
             "# Create a Dummy printer to capture output",
             "p = Dummy()",
             "",
             "# Execute commands",
-        ]
+        ])
 
         for cmd in commands:
             lines.append(cmd.python_call)

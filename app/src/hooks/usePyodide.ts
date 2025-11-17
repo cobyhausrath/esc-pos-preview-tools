@@ -89,6 +89,13 @@ os.path.expanduser('~')
               pyodideInstance.FS.writeFile(`${homeDir}/escpos_constants.py`, constantsCode);
               pyodideInstance.FS.writeFile(`${homeDir}/escpos_verifier.py`, verifierCode);
 
+              // Install Pillow for image support in verifier
+              await pyodideInstance.runPythonAsync(`
+import micropip
+await micropip.install('Pillow')
+              `);
+              pillowInstalledRef.current = true;
+
               // Test that verifier is available
               await pyodideInstance.runPythonAsync(`
 from escpos_verifier import EscPosVerifier
@@ -97,7 +104,7 @@ del _test
               `);
 
               if (import.meta.env.DEV) {
-                console.log('ESC-POS verifier loaded successfully');
+                console.log('ESC-POS verifier loaded successfully with image support');
               }
             }
           }
