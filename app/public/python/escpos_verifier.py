@@ -530,11 +530,27 @@ p.set(align='left')"""
 
         # Extract raw image data from each stripe's escpos_bytes
         # ESC * format: ESC 0x2A mode nL nH [data...]
-        combined_data = bytearray()
+        # Important: ESC * uses column-major format, so we need to interleave stripe data
+        # by column, not concatenate all stripes sequentially
+
+        # Extract data from each stripe (skip 5-byte header)
+        stripe_data_list = []
         for stripe in stripes:
-            # Skip the 5-byte header (ESC, *, mode, nL, nH) and extract just the image data
             stripe_data = stripe.escpos_bytes[5:]
-            combined_data.extend(stripe_data)
+            stripe_data_list.append(stripe_data)
+
+        # Interleave by column: for each column, concatenate bytes from all stripes
+        combined_data = bytearray()
+        bytes_per_stripe_column = bytes_per_column_per_stripe
+
+        for col in range(width_dots):
+            # For this column, gather bytes from each stripe
+            for stripe_data in stripe_data_list:
+                # Calculate offset for this column in this stripe's data
+                offset = col * bytes_per_stripe_column
+                # Take the bytes for this column from this stripe
+                col_bytes = stripe_data[offset:offset + bytes_per_stripe_column]
+                combined_data.extend(col_bytes)
 
         # Now decode the combined raw data as a single tall image
         b64_image = self._decode_bit_image(width_dots, total_height, bytes_per_column, bytes(combined_data))
