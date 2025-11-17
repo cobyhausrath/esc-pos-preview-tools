@@ -63,15 +63,31 @@ export function usePyodide(settings?: PyodideSettings) {
           if (constantsResponse.ok) {
             const constantsCode = await constantsResponse.text();
 
-            // Write to Pyodide filesystem so it can be imported as a module
-            pyodideInstance.FS.writeFile('/escpos_constants.py', constantsCode);
-
             const verifierResponse = await fetch('/python/escpos_verifier.py');
             if (verifierResponse.ok) {
               const verifierCode = await verifierResponse.text();
 
-              // Write to Pyodide filesystem so it can be imported as a module
-              pyodideInstance.FS.writeFile('/escpos_verifier.py', verifierCode);
+              // Get current working directory and ensure it's in sys.path
+              await pyodideInstance.runPythonAsync(`
+import sys
+import os
+
+# Get the home directory (usually /home/pyodide)
+home_dir = os.path.expanduser('~')
+
+# Ensure home directory is in sys.path
+if home_dir not in sys.path:
+    sys.path.insert(0, home_dir)
+              `);
+
+              // Write to Pyodide filesystem in the home directory
+              const homeDir = await pyodideInstance.runPythonAsync(`
+import os
+os.path.expanduser('~')
+              `);
+
+              pyodideInstance.FS.writeFile(`${homeDir}/escpos_constants.py`, constantsCode);
+              pyodideInstance.FS.writeFile(`${homeDir}/escpos_verifier.py`, verifierCode);
 
               // Test that verifier is available
               await pyodideInstance.runPythonAsync(`
