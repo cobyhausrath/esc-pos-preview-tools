@@ -1126,6 +1126,55 @@ body {
   vertical-align: top;
 }
 
+/* Text formatting effects for receipt preview */
+.receipt-line .flip {
+  display: inline-block;
+  transform: rotate(180deg);
+}
+
+.receipt-line .invert {
+  background-color: #000;
+  color: #fff;
+  padding: 0 2px;
+}
+
+.receipt-line .invert strong {
+  color: #fff;
+}
+
+/* Width multipliers (1-8x) */
+.receipt-line .width-2x { display: inline-block; transform: scaleX(2); transform-origin: left; }
+.receipt-line .width-3x { display: inline-block; transform: scaleX(3); transform-origin: left; }
+.receipt-line .width-4x { display: inline-block; transform: scaleX(4); transform-origin: left; }
+.receipt-line .width-5x { display: inline-block; transform: scaleX(5); transform-origin: left; }
+.receipt-line .width-6x { display: inline-block; transform: scaleX(6); transform-origin: left; }
+.receipt-line .width-7x { display: inline-block; transform: scaleX(7); transform-origin: left; }
+.receipt-line .width-8x { display: inline-block; transform: scaleX(8); transform-origin: left; }
+
+/* Height multipliers (1-8x) */
+.receipt-line .height-2x { display: inline-block; transform: scaleY(2); transform-origin: top; line-height: 2; }
+.receipt-line .height-3x { display: inline-block; transform: scaleY(3); transform-origin: top; line-height: 3; }
+.receipt-line .height-4x { display: inline-block; transform: scaleY(4); transform-origin: top; line-height: 4; }
+.receipt-line .height-5x { display: inline-block; transform: scaleY(5); transform-origin: top; line-height: 5; }
+.receipt-line .height-6x { display: inline-block; transform: scaleY(6); transform-origin: top; line-height: 6; }
+.receipt-line .height-7x { display: inline-block; transform: scaleY(7); transform-origin: top; line-height: 7; }
+.receipt-line .height-8x { display: inline-block; transform: scaleY(8); transform-origin: top; line-height: 8; }
+
+/* Double width/height from ESC ! command */
+.receipt-line .double-width {
+  display: inline-block;
+  transform: scaleX(2);
+  transform-origin: left;
+  letter-spacing: 0.1em;
+}
+
+.receipt-line .double-height {
+  display: inline-block;
+  transform: scaleY(2);
+  transform-origin: top;
+  line-height: 2;
+}
+
 /* Image Badge Styles */
 .image-badge-wrapper {
   display: inline;

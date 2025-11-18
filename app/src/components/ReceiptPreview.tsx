@@ -748,12 +748,25 @@ export default function ReceiptPreview({
 
               // Regular text line
               const LineTag = line.bold ? 'strong' : 'span';
+
+              // Build CSS classes for formatting
+              const textClasses = [];
+              if (line.flip) textClasses.push('flip');
+              if (line.invert) textClasses.push('invert');
+              if (line.width && line.width > 1) textClasses.push(`width-${line.width}x`);
+              if (line.height && line.height > 1) textClasses.push(`height-${line.height}x`);
+              if (line.doubleWidth) textClasses.push('double-width');
+              if (line.doubleHeight) textClasses.push('double-height');
+
+              const textContent = line.text || '\u00A0';
+              const textClassName = textClasses.length > 0 ? textClasses.join(' ') : undefined;
+
               const content = line.underline ? (
                 <u>
-                  <LineTag>{line.text || '\u00A0'}</LineTag>
+                  <LineTag className={textClassName}>{textContent}</LineTag>
                 </u>
               ) : (
-                <LineTag>{line.text || '\u00A0'}</LineTag>
+                <LineTag className={textClassName}>{textContent}</LineTag>
               );
 
               return (
@@ -764,6 +777,10 @@ export default function ReceiptPreview({
                   data-align={line.align}
                   data-bold={line.bold}
                   data-underline={line.underline}
+                  data-flip={line.flip}
+                  data-invert={line.invert}
+                  data-width={line.width}
+                  data-height={line.height}
                   onContextMenu={handleContextMenu}
                 >
                   {content}
