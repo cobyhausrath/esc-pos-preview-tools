@@ -206,39 +206,75 @@ function sendToSocket(host, port, data, timeout = DEFAULT_TIMEOUT) {
         const client = new net.Socket();
         let connected = false;
         let bytesSent = 0;
+        let resolved = false; // Track if we've already resolved
 
         client.setTimeout(timeout);
 
         client.on('timeout', () => {
             client.destroy();
-            reject({ code: 'TIMEOUT', message: `Connection timeout after ${timeout}ms` });
+            if (!resolved) {
+                resolved = true;
+                reject({ code: 'TIMEOUT', message: `Connection timeout after ${timeout}ms` });
+            }
         });
 
         client.on('error', (err) => {
-            reject({ code: 'CONNECTION_ERROR', message: err.message });
+            // Explicitly destroy socket on error to prevent leaks
+            client.destroy();
+            if (!resolved) {
+                resolved = true;
+                reject({ code: 'CONNECTION_ERROR', message: err.message });
+            }
         });
 
         client.on('connect', () => {
             connected = true;
-            client.write(data, (err) => {
+            // Disable timeout after successful connection
+            // ESC-POS printers typically don't send responses, so we don't want to timeout
+            client.setTimeout(0);
+
+            // write() returns true if data was flushed immediately, false if buffered
+            const flushed = client.write(data, (err) => {
                 if (err) {
-                    reject({ code: 'WRITE_ERROR', message: err.message });
+                    // Destroy socket on write error
+                    client.destroy();
+                    if (!resolved) {
+                        resolved = true;
+                        reject({ code: 'WRITE_ERROR', message: err.message });
+                    }
                     return;
                 }
                 bytesSent = data.length;
+
+                // If write returned true (flushed immediately), resolve now
+                // For small writes, 'drain' event won't fire
+                if (flushed && !resolved) {
+                    resolved = true;
+                    resolve({ bytesSent });
+                    // Close connection in background
+                    client.end();
+                }
             });
         });
 
         client.on('drain', () => {
+            // Data has been written to the OS buffer (after backpressure)
+            // Resolve immediately so the UI gets instant feedback
+            if (!resolved && connected && bytesSent === data.length) {
+                resolved = true;
+                resolve({ bytesSent });
+            }
+            // Close the connection in the background
             client.end();
         });
 
         client.on('close', () => {
-            if (connected && bytesSent === data.length) {
-                resolve({ bytesSent });
-            } else if (!connected) {
+            // Only reject if we haven't resolved yet and something went wrong
+            if (!resolved && !connected) {
+                resolved = true;
                 reject({ code: 'CONNECTION_CLOSED', message: 'Connection closed before sending data' });
             }
+            // Otherwise, we already resolved in 'drain' - nothing to do
         });
 
         client.connect(port, host);
@@ -334,6 +370,8 @@ function queryPrinterStatus(host, port, timeout = DEFAULT_TIMEOUT) {
 
         client.on('error', (err) => {
             console.log(`[Status Query] Error: ${err.message}`);
+            // Explicitly destroy socket on error to prevent leaks
+            client.destroy();
             reject({ code: 'CONNECTION_ERROR', message: err.message });
         });
 
@@ -562,17 +600,21 @@ async function handleMessage(ws, message, timeout = DEFAULT_TIMEOUT) {
         // Send to printer
         try {
             const result = await sendToSocket(host, port, buffer, timeout);
-            ws.send(JSON.stringify({
+            const response = {
                 success: true,
                 message: `Sent ${result.bytesSent} bytes to ${host}:${port}`,
                 bytesSent: result.bytesSent
-            }));
+            };
+            console.log(`[Send] Success: ${result.bytesSent} bytes sent to ${host}:${port}`);
+            ws.send(JSON.stringify(response));
         } catch (error) {
-            ws.send(JSON.stringify({
+            const errorResponse = {
                 success: false,
                 error: error.message,
                 code: error.code || 'UNKNOWN_ERROR'
-            }));
+            };
+            console.log(`[Send] Error: ${error.message} (${error.code})`);
+            ws.send(JSON.stringify(errorResponse));
         }
 
         return;

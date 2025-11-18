@@ -224,7 +224,7 @@ Documentation and analysis of different decoding strategies with implementation 
 1. **Start React app:**
    ```bash
    cd app
-   yarn dev
+   npm run dev  # or yarn dev
    ```
 
 2. **Test bin import:**
@@ -313,13 +313,13 @@ Potential improvements for future PRs:
 - Visual diff tool to compare original vs decoded images
 - Web worker for image decoding to prevent UI blocking
 
-## References
+## Compatibility
 
 - [ESC/POS Command Reference](https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=88) - ESC * Select bit-image mode
 - [GS v Command Reference](https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=94) - Print raster bit image
 - [Pyodide Documentation](https://pyodide.org/en/stable/usage/file-system.html) - Filesystem API
 - python-escpos library - Reference implementation for ESC-POS generation
 
-## Migration Note
+## References
 
 This PR builds on the React TypeScript editor migration and completes the bin import feature that was previously broken. The fix enables full bidirectional conversion between ESC-POS binary data and python-escpos API calls, making the editor a complete receipt development and debugging tool.

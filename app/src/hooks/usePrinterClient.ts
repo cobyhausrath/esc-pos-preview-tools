@@ -27,6 +27,12 @@ export function usePrinterClient() {
   const connect = useCallback((printer: PrinterConfig) => {
     return new Promise<void>((resolve, reject) => {
       try {
+        // Close existing connection if any to prevent duplicates
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+
         const ws = new WebSocket(bridgeUrl);
 
         ws.onopen = () => {
@@ -94,9 +100,15 @@ export function usePrinterClient() {
           action: 'status',
         };
 
-        if (printerName === 'custom' && customHost && customPort) {
+        // Always send host and port for reliability
+        // This ensures status queries work even if printer name doesn't match bridge config
+        if (customHost && customPort) {
           request.host = customHost;
           request.port = customPort;
+          // Also send printer name as fallback if it matches a known preset
+          if (printerName !== 'custom') {
+            request.printer = printerName;
+          }
         } else {
           request.printer = printerName;
         }
@@ -135,7 +147,7 @@ export function usePrinterClient() {
     []
   );
 
-  const print = useCallback(
+  const sendRawData = useCallback(
     async (data: Uint8Array): Promise<void> => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
         throw new Error('Not connected to printer bridge');
@@ -146,6 +158,31 @@ export function usePrinterClient() {
       }
 
       return new Promise((resolve, reject) => {
+        // Define handleMessage in the outer scope so timeout can access it
+        const handleMessage = (event: MessageEvent) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.success) {
+              clearTimeout(timeoutId);
+              setIsPrinting(false);
+              wsRef.current?.removeEventListener('message', handleMessage);
+              resolve();
+            } else if (message.success === false) {
+              clearTimeout(timeoutId);
+              setIsPrinting(false);
+              const errorMsg = message.error || 'Print failed';
+              setError(errorMsg);
+              wsRef.current?.removeEventListener('message', handleMessage);
+              reject(new Error(errorMsg));
+            }
+          } catch (err) {
+            clearTimeout(timeoutId);
+            setIsPrinting(false);
+            wsRef.current?.removeEventListener('message', handleMessage);
+            reject(err);
+          }
+        };
+
         const timeoutId = setTimeout(() => {
           setIsPrinting(false);
           setError('Print timeout - printer not responding');
@@ -156,31 +193,6 @@ export function usePrinterClient() {
         try {
           setIsPrinting(true);
           setError(null);
-
-          // Wait for confirmation
-          const handleMessage = (event: MessageEvent) => {
-            try {
-              const message = JSON.parse(event.data);
-              if (message.success) {
-                clearTimeout(timeoutId);
-                setIsPrinting(false);
-                wsRef.current?.removeEventListener('message', handleMessage);
-                resolve();
-              } else if (message.success === false) {
-                clearTimeout(timeoutId);
-                setIsPrinting(false);
-                const errorMsg = message.error || 'Print failed';
-                setError(errorMsg);
-                wsRef.current?.removeEventListener('message', handleMessage);
-                reject(new Error(errorMsg));
-              }
-            } catch (err) {
-              clearTimeout(timeoutId);
-              setIsPrinting(false);
-              wsRef.current?.removeEventListener('message', handleMessage);
-              reject(err);
-            }
-          };
 
           wsRef.current!.addEventListener('message', handleMessage);
 
@@ -204,6 +216,33 @@ export function usePrinterClient() {
     [selectedPrinter]
   );
 
+  const print = useCallback(
+    async (data: Uint8Array): Promise<void> => {
+      return sendRawData(data);
+    },
+    [sendRawData]
+  );
+
+  const feedPaper = useCallback(
+    async (lines: number = 3): Promise<void> => {
+      // ESC d n - Print and feed n lines
+      const command = new Uint8Array([0x1B, 0x64, lines]);
+      console.log(`[Feed] Sending ESC d ${lines} command:`, Array.from(command).map(b => `0x${b.toString(16).toUpperCase().padStart(2, '0')}`).join(' '));
+      return sendRawData(command);
+    },
+    [sendRawData]
+  );
+
+  const cutPaper = useCallback(
+    async (partial: boolean = false): Promise<void> => {
+      // GS V m - Cut paper (m=0: full cut, m=1: partial cut)
+      const command = new Uint8Array([0x1D, 0x56, partial ? 1 : 0]);
+      console.log(`[Cut] Sending GS V ${partial ? 1 : 0} command:`, Array.from(command).map(b => `0x${b.toString(16).toUpperCase().padStart(2, '0')}`).join(' '));
+      return sendRawData(command);
+    },
+    [sendRawData]
+  );
+
   return {
     isConnected,
     isPrinting,
@@ -215,6 +254,8 @@ export function usePrinterClient() {
     disconnect,
     queryStatus,
     print,
+    feedPaper,
+    cutPaper,
     updateBridgeUrl,
   };
 }

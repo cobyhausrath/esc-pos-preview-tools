@@ -3,11 +3,27 @@ import { useState, useCallback } from 'react';
 export interface PrinterSettings {
   printerProfile: string;
   imageImplementation: 'bitImageColumn' | 'bitImageRaster' | 'graphics';
+  autoCheckStatus: boolean;
+  statusCheckInterval: number; // seconds, 0 = disabled
+  autoConnect: boolean;
+  autoFeed: boolean;
+  autoCut: boolean;
+  lastPrinterConfig: {
+    name: string;
+    ip: string;
+    port: number;
+  } | null;
 }
 
 const DEFAULT_SETTINGS: PrinterSettings = {
   printerProfile: 'NT-80-V-UL',
   imageImplementation: 'bitImageRaster',
+  autoCheckStatus: true,
+  statusCheckInterval: 10, // Check every 10 seconds (reduced frequency to avoid conflicts)
+  autoConnect: false,
+  autoFeed: true,
+  autoCut: true,
+  lastPrinterConfig: null,
 };
 
 const STORAGE_KEY = 'escpos-printer-settings';
