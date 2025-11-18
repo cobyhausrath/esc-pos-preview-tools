@@ -62,12 +62,39 @@ export function usePyodide(settings?: PyodideSettings) {
           const constantsResponse = await fetch('/python/escpos_constants.py');
           if (constantsResponse.ok) {
             const constantsCode = await constantsResponse.text();
-            await pyodideInstance.runPythonAsync(constantsCode);
 
             const verifierResponse = await fetch('/python/escpos_verifier.py');
             if (verifierResponse.ok) {
               const verifierCode = await verifierResponse.text();
-              await pyodideInstance.runPythonAsync(verifierCode);
+
+              // Get current working directory and ensure it's in sys.path
+              await pyodideInstance.runPythonAsync(`
+import sys
+import os
+
+# Get the home directory (usually /home/pyodide)
+home_dir = os.path.expanduser('~')
+
+# Ensure home directory is in sys.path
+if home_dir not in sys.path:
+    sys.path.insert(0, home_dir)
+              `);
+
+              // Write to Pyodide filesystem in the home directory
+              const homeDir = await pyodideInstance.runPythonAsync(`
+import os
+os.path.expanduser('~')
+              `);
+
+              pyodideInstance.FS.writeFile(`${homeDir}/escpos_constants.py`, constantsCode);
+              pyodideInstance.FS.writeFile(`${homeDir}/escpos_verifier.py`, verifierCode);
+
+              // Install Pillow for image support in verifier
+              await pyodideInstance.runPythonAsync(`
+import micropip
+await micropip.install('Pillow')
+              `);
+              pillowInstalledRef.current = true;
 
               // Test that verifier is available
               await pyodideInstance.runPythonAsync(`
@@ -77,7 +104,7 @@ del _test
               `);
 
               if (import.meta.env.DEV) {
-                console.log('ESC-POS verifier loaded successfully');
+                console.log('ESC-POS verifier loaded successfully with image support');
               }
             }
           }
@@ -167,6 +194,9 @@ validate_code(${JSON.stringify(code)})
         await Promise.race([
           pyodide.runPythonAsync(`
 from escpos.printer import Dummy
+from PIL import Image
+import io
+import base64
 
 # Create a dummy printer configured for ${printerProfile}
 p = Dummy(profile='${printerProfile}')
@@ -220,18 +250,31 @@ escpos_bytes = bytes([${bytesArray.join(', ')}])
 python_code = verifier.bytes_to_python_escpos(escpos_bytes)
 
 # Clean up the generated code for editor display
-# Remove the escpos_output line at the end (not needed for user editing)
+# Extract only the command lines (between "# Execute commands" and "# Get the generated ESC-POS bytes")
 lines = python_code.split('\\n')
 
-# Find where to cut off (before "# Get the generated ESC-POS bytes")
-cutoff = len(lines)
+# Find the start (after "# Execute commands")
+start = 0
 for i, line in enumerate(lines):
-    if '# Get the generated ESC-POS bytes' in line or line.strip() == '':
-        cutoff = i
+    if '# Execute commands' in line:
+        start = i + 1
         break
 
-# Join relevant lines and clean up
-python_code = '\\n'.join(lines[:cutoff]).strip()
+# Find the end (before "# Get the generated ESC-POS bytes")
+end = len(lines)
+for i, line in enumerate(lines):
+    if '# Get the generated ESC-POS bytes' in line:
+        end = i
+        break
+
+# Extract command lines
+command_lines = lines[start:end]
+
+# Remove trailing empty lines
+while command_lines and not command_lines[-1].strip():
+    command_lines.pop()
+
+python_code = '\\n'.join(command_lines).strip()
 
 # Return the cleaned code
 python_code

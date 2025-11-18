@@ -22,14 +22,14 @@ from dataclasses import dataclass, field
 
 from escpos_constants import (
     ESC, GS, LF, CR,
-    ESC_INIT, ESC_BOLD, ESC_UNDERLINE, ESC_ALIGN, ESC_PRINT_MODE,
-    GS_CUT, GS_CHAR_SIZE,
+    ESC_INIT, ESC_BOLD, ESC_UNDERLINE, ESC_ALIGN, ESC_PRINT_MODE, ESC_BIT_IMAGE,
+    GS_CUT, GS_CHAR_SIZE, GS_RASTER_IMAGE,
     BOLD_ON, UNDERLINE_OFF,
     ALIGN_LEFT, ALIGN_CENTER, ALIGN_RIGHT, ALIGN_VALUE_TO_NAME,
     CUT_PARTIAL, CUT_PARTIAL_ASCII, CUT_VALUE_TO_MODE,
     PRINT_MODE_BOLD, PRINT_MODE_DOUBLE_HEIGHT, PRINT_MODE_DOUBLE_WIDTH,
     ASCII_PRINTABLE_START, ASCII_PRINTABLE_END,
-    MAX_INPUT_SIZE
+    MAX_INPUT_SIZE, MAX_IMAGE_DIMS
 )
 
 
@@ -108,6 +108,9 @@ class EscPosVerifier:
                 self.logger.warning(warning)
                 self.position += 1
 
+        # Merge sequential bit images (ESC * stripes of the same image)
+        self._merge_bit_image_stripes()
+
         if self.warnings:
             self.logger.info(f"Parsing completed with {len(self.warnings)} warning(s)")
 
@@ -179,6 +182,74 @@ class EscPosVerifier:
             ))
             self.position += 3
             self.logger.debug(f"Parsed alignment command: {align}")
+
+        # ESC * - Bit image
+        elif command == ESC_BIT_IMAGE:
+            if self.position + 4 >= len(data):
+                self.position += 2
+                return
+            mode = data[self.position + 2]
+            nL = data[self.position + 3]
+            nH = data[self.position + 4]
+            width_dots = nL + (nH * 256)
+
+            # Calculate data bytes based on mode
+            # Mode determines vertical dot density:
+            # 0, 1: 8 dots (1 byte per column)
+            # 2, 3: 16 dots (2 bytes per column)
+            # 32, 33: 24 dots (3 bytes per column)
+            if mode in [0, 1]:
+                bytes_per_column = 1
+                height_dots = 8
+            elif mode in [2, 3]:
+                bytes_per_column = 2
+                height_dots = 16
+            elif mode in [32, 33]:
+                bytes_per_column = 3
+                height_dots = 24
+            else:
+                # Unknown mode, guess 1 byte per column
+                bytes_per_column = 1
+                height_dots = 8
+
+            data_bytes = width_dots * bytes_per_column
+            total_size = 5 + data_bytes
+
+            if self.position + total_size <= len(data):
+                # Extract image data
+                image_data = data[self.position + 5:self.position + total_size]
+
+                # Try to decode the image
+                b64_image = self._decode_bit_image(width_dots, height_dots, bytes_per_column, image_data)
+
+                if b64_image:
+                    # Generate code with embedded image
+                    # Note: ESC * images are sent as horizontal stripes without alignment changes
+                    python_call = f"""# Bit image ({width_dots}x{height_dots} dots, mode {mode})
+img_data = base64.b64decode('''{b64_image}''')
+img = Image.open(io.BytesIO(img_data))
+p.image(img, impl='bitImageColumn')"""
+                else:
+                    # Fallback if decode fails
+                    python_call = f"# Bit image ({width_dots}x{height_dots} dots, mode {mode}) - decode failed"
+
+                self.commands.append(ParsedCommand(
+                    name="bit_image",
+                    escpos_bytes=data[self.position:self.position + total_size],
+                    python_call=python_call,
+                    params={
+                        "width": width_dots,
+                        "height": height_dots,
+                        "mode": mode,
+                        "type": "bit_image",
+                        "base64": b64_image if b64_image else None
+                    }
+                ))
+                self.position += total_size
+                self.logger.debug(f"Parsed bit image: {width_dots}x{height_dots} dots, mode {mode}")
+            else:
+                # Not enough data
+                self.position += 2
 
         # ESC ! - Print mode (size, bold, etc.)
         elif command == ESC_PRINT_MODE:
@@ -257,6 +328,72 @@ class EscPosVerifier:
             self.position += 3
             self.logger.debug(f"Parsed cut command: {cut_mode}")
 
+        # GS v - Raster image (GS v 0 format)
+        elif command == GS_RASTER_IMAGE:
+            if self.position + 7 >= len(data):
+                self.position += 2
+                return
+
+            # Check for GS v 0 format (0x30 = ASCII '0')
+            sub_command = data[self.position + 2]
+            if sub_command == 0x30 or sub_command == 0x00:  # Support both 0 and ASCII '0'
+                mode = data[self.position + 3]
+                xL = data[self.position + 4]
+                xH = data[self.position + 5]
+                yL = data[self.position + 6]
+                yH = data[self.position + 7]
+
+                width_bytes = xL + (xH * 256)
+                height_dots = yL + (yH * 256)
+                data_bytes = width_bytes * height_dots
+                total_size = 8 + data_bytes
+
+                if self.position + total_size <= len(data):
+                    width_pixels = width_bytes * 8
+
+                    # Extract image data
+                    image_data = data[self.position + 8:self.position + total_size]
+
+                    # Try to decode the image
+                    b64_image = self._decode_raster_image(width_bytes, height_dots, image_data)
+
+                    if b64_image:
+                        # Generate code with embedded image
+                        python_call = f"""# Raster image ({width_pixels}x{height_dots}px)
+img_data = base64.b64decode('''{b64_image}''')
+img = Image.open(io.BytesIO(img_data))
+p.set(align='center')
+p.image(img, impl='bitImageRaster')
+p.set(align='left')"""
+                    else:
+                        # Fallback if decode fails
+                        python_call = f"# TODO: Image ({width_pixels}x{height_dots}px) - decode failed"
+
+                    self.commands.append(ParsedCommand(
+                        name="raster_image",
+                        escpos_bytes=data[self.position:self.position + total_size],
+                        python_call=python_call,
+                        params={
+                            "width_bytes": width_bytes,
+                            "width_pixels": width_pixels,
+                            "height": height_dots,
+                            "mode": mode,
+                            "type": "raster_image",
+                            "base64": b64_image if b64_image else None
+                        }
+                    ))
+                    self.position += total_size
+                    self.logger.debug(f"Parsed raster image: {width_pixels}x{height_dots}px, mode {mode}")
+                else:
+                    # Not enough data
+                    self.position += 2
+            else:
+                # Unknown GS v sub-command
+                warning = f"Unknown GS v sub-command 0x{sub_command:02X} at position {self.position}"
+                self.warnings.append(warning)
+                self.logger.warning(warning)
+                self.position += 3
+
         # GS ! - Character size
         elif command == GS_CHAR_SIZE:
             if self.position + 2 >= len(data):
@@ -305,6 +442,271 @@ class EscPosVerifier:
         ))
         self.logger.debug(f"Parsed text: {len(text)} characters")
 
+    def _merge_bit_image_stripes(self):
+        """
+        Merge sequential ESC * bit images into single tall images
+
+        ESC * mode 33 (24-dot) is often used to send tall images as horizontal stripes.
+        This method detects and combines sequential bit images with the same width/mode.
+        """
+        if not self.commands:
+            return
+
+        merged_commands = []
+        i = 0
+
+        while i < len(self.commands):
+            cmd = self.commands[i]
+
+            # Check if this is a bit image
+            if cmd.name == "bit_image":
+                # Look ahead for sequential bit images with same width and mode
+                stripes = [cmd]
+                j = i + 1
+
+                # Skip line feeds between stripes
+                while j < len(self.commands):
+                    next_cmd = self.commands[j]
+
+                    # Allow line feeds between stripes
+                    # python-escpos automatically adds line feeds after each bit image stripe
+                    # to advance paper to the next row. We skip them when merging to create
+                    # a single tall image from multiple 24-pixel stripes.
+                    if next_cmd.name == "line_feed":
+                        j += 1
+                        continue
+
+                    # Check if it's another bit image with matching parameters
+                    if (next_cmd.name == "bit_image" and
+                        next_cmd.params.get("width") == cmd.params.get("width") and
+                        next_cmd.params.get("mode") == cmd.params.get("mode")):
+                        stripes.append(next_cmd)
+                        j += 1
+                    else:
+                        break
+
+                # If we found multiple stripes, merge them
+                if len(stripes) > 1:
+                    merged_cmd = self._combine_bit_image_stripes(stripes)
+                    merged_commands.append(merged_cmd)
+                    i = j  # Skip all merged commands
+                    self.logger.debug(f"Merged {len(stripes)} bit image stripes into single image")
+                else:
+                    # Single image, add as-is
+                    merged_commands.append(cmd)
+                    i += 1
+            else:
+                # Not a bit image, add as-is
+                merged_commands.append(cmd)
+                i += 1
+
+        self.commands = merged_commands
+
+    def _combine_bit_image_stripes(self, stripes: List[ParsedCommand]) -> ParsedCommand:
+        """
+        Combine multiple bit image stripes into a single tall image
+
+        Args:
+            stripes: List of bit image commands to combine
+
+        Returns:
+            Single ParsedCommand with combined image
+        """
+        # Get parameters from first stripe
+        width_dots = stripes[0].params["width"]
+        height_per_stripe = stripes[0].params["height"]
+        mode = stripes[0].params["mode"]
+
+        # Determine bytes per column based on mode
+        if mode in [32, 33]:
+            bytes_per_column_per_stripe = 3  # 24 dots
+        elif mode in [2, 3]:
+            bytes_per_column_per_stripe = 2  # 16 dots
+        elif mode in [0, 1]:
+            bytes_per_column_per_stripe = 1  # 8 dots
+        else:
+            bytes_per_column_per_stripe = 1  # default
+
+        # Total bytes per column for the combined image
+        bytes_per_column = bytes_per_column_per_stripe * len(stripes)
+        total_height = height_per_stripe * len(stripes)
+
+        # Extract raw image data from each stripe's escpos_bytes
+        # ESC * format: ESC 0x2A mode nL nH [data...]
+        # Important: ESC * uses column-major format, so we need to interleave stripe data
+        # by column, not concatenate all stripes sequentially
+
+        # Extract data from each stripe (skip 5-byte header)
+        stripe_data_list = []
+        for stripe in stripes:
+            stripe_data = stripe.escpos_bytes[5:]
+            stripe_data_list.append(stripe_data)
+
+        # Interleave by column: for each column, concatenate bytes from all stripes
+        combined_data = bytearray()
+        bytes_per_stripe_column = bytes_per_column_per_stripe
+
+        for col in range(width_dots):
+            # For this column, gather bytes from each stripe
+            for stripe_data in stripe_data_list:
+                # Calculate offset for this column in this stripe's data
+                offset = col * bytes_per_stripe_column
+                # Take the bytes for this column from this stripe
+                col_bytes = stripe_data[offset:offset + bytes_per_stripe_column]
+                combined_data.extend(col_bytes)
+
+        # Now decode the combined raw data as a single tall image
+        b64_image = self._decode_bit_image(width_dots, total_height, bytes_per_column, bytes(combined_data))
+
+        if b64_image:
+            # Generate python call for combined image
+            python_call = f"""# Bit image ({width_dots}x{total_height} dots, {len(stripes)} stripes of mode {mode})
+img_data = base64.b64decode('''{b64_image}''')
+img = Image.open(io.BytesIO(img_data))
+p.image(img, impl='bitImageColumn')"""
+        else:
+            # Fallback if decode fails
+            python_call = f"# Bit image ({width_dots}x{total_height} dots, {len(stripes)} stripes) - decode failed"
+
+        # Combine all ESC-POS bytes
+        combined_bytes = b''.join(stripe.escpos_bytes for stripe in stripes)
+
+        return ParsedCommand(
+            name="bit_image",
+            escpos_bytes=combined_bytes,
+            python_call=python_call,
+            params={
+                "width": width_dots,
+                "height": total_height,
+                "mode": mode,
+                "type": "bit_image_combined",
+                "stripe_count": len(stripes),
+                "base64": b64_image if b64_image else None
+            }
+        )
+
+    def _decode_bit_image(self, width_dots: int, height_dots: int, bytes_per_column: int, data: bytes) -> str:
+        """
+        Decode ESC * bit image data to base64 PNG
+
+        ESC * format uses column-major order (vertical strips)
+
+        Args:
+            width_dots: Width in dots
+            height_dots: Height in dots (8, 16, or 24)
+            bytes_per_column: Bytes per column (1, 2, or 3)
+            data: Raw image data
+
+        Returns:
+            Base64-encoded PNG string
+        """
+        try:
+            from PIL import Image
+            import io
+            import base64
+
+            # Security: Validate image dimensions to prevent DoS
+            if width_dots > MAX_IMAGE_DIMS or height_dots > MAX_IMAGE_DIMS:
+                self.logger.warning(f"Image dimensions {width_dots}x{height_dots} exceed maximum {MAX_IMAGE_DIMS}")
+                return ""
+
+            # Create a new black and white image
+            img = Image.new('1', (width_dots, height_dots), 1)  # 1 = white background
+            pixels = img.load()
+
+            # Decode bitmap data (column-major order)
+            data_idx = 0
+            for x in range(width_dots):
+                # Read bytes for this column
+                for byte_idx in range(bytes_per_column):
+                    if data_idx >= len(data):
+                        break
+
+                    byte = data[data_idx]
+                    data_idx += 1
+
+                    # Extract 8 vertical pixels from this byte
+                    # Bit 7 (MSB) = top pixel, bit 0 (LSB) = bottom pixel
+                    for bit in range(8):
+                        y = byte_idx * 8 + (7 - bit)
+                        if y >= height_dots:
+                            break
+
+                        pixel_on = (byte & (1 << bit)) != 0
+                        pixels[x, y] = 0 if pixel_on else 1  # 0 = black, 1 = white
+
+            # Convert to PNG and encode as base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            png_data = buffer.getvalue()
+            b64_data = base64.b64encode(png_data).decode('ascii')
+
+            return b64_data
+
+        except Exception as e:
+            self.logger.error(f"Failed to decode bit image: {e}")
+            return ""
+
+    def _decode_raster_image(self, width_bytes: int, height_dots: int, data: bytes) -> str:
+        """
+        Decode raster image data to base64 PNG
+
+        Args:
+            width_bytes: Width in bytes (each byte = 8 pixels)
+            height_dots: Height in dots/pixels
+            data: Raw image data
+
+        Returns:
+            Base64-encoded PNG string
+        """
+        try:
+            from PIL import Image
+            import io
+            import base64
+
+            width_pixels = width_bytes * 8
+
+            # Security: Validate image dimensions to prevent DoS
+            if width_pixels > MAX_IMAGE_DIMS or height_dots > MAX_IMAGE_DIMS:
+                self.logger.warning(f"Image dimensions {width_pixels}x{height_dots} exceed maximum {MAX_IMAGE_DIMS}")
+                return ""
+
+            # Create a new black and white image
+            img = Image.new('1', (width_pixels, height_dots), 1)  # 1 = white background
+            pixels = img.load()
+
+            # Decode bitmap data (row-major order)
+            data_idx = 0
+            for y in range(height_dots):
+                for x_byte in range(width_bytes):
+                    if data_idx >= len(data):
+                        break
+
+                    byte = data[data_idx]
+                    data_idx += 1
+
+                    # Extract 8 horizontal pixels from this byte
+                    # GS v 0 format: bit 7 (MSB) = leftmost pixel, bit 0 (LSB) = rightmost
+                    for bit in range(8):
+                        x = x_byte * 8 + (7 - bit)
+                        if x >= width_pixels:
+                            break
+
+                        pixel_on = (byte & (1 << bit)) != 0
+                        pixels[x, y] = 0 if pixel_on else 1  # 0 = black, 1 = white
+
+            # Convert to PNG and encode as base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            png_data = buffer.getvalue()
+            b64_data = base64.b64encode(png_data).decode('ascii')
+
+            return b64_data
+
+        except Exception as e:
+            self.logger.error(f"Failed to decode raster image: {e}")
+            return ""
+
     def generate_python_code(self, commands: List[ParsedCommand],
                             printer_class: str = "Dummy") -> str:
         """
@@ -317,14 +719,30 @@ class EscPosVerifier:
         Returns:
             Complete Python script as string
         """
-        lines = [
-            "from escpos.printer import Dummy",
-            "",
+        # Check if we need PIL for images
+        has_images = any(cmd.name in ['raster_image', 'bit_image'] for cmd in commands)
+
+        lines = []
+        if has_images:
+            lines.extend([
+                "from escpos.printer import Dummy",
+                "from PIL import Image",
+                "import io",
+                "import base64",
+                "",
+            ])
+        else:
+            lines.extend([
+                "from escpos.printer import Dummy",
+                "",
+            ])
+
+        lines.extend([
             "# Create a Dummy printer to capture output",
             "p = Dummy()",
             "",
             "# Execute commands",
-        ]
+        ])
 
         for cmd in commands:
             lines.append(cmd.python_call)
