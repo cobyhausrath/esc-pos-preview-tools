@@ -75,13 +75,16 @@ export default function Editor() {
       // Re-detect images in the updated code
       const detectedImages = detectBase64Images(code);
 
-      // Find matching image by base64 data prefix (position may have changed)
+      // Find matching image by position (within a small range)
+      // Base64 matching doesn't work after dithering since the data changes
       const matchingImage = detectedImages.find(
-        img => img.base64Data.substring(0, 100) === selectedImage.base64Data.substring(0, 100)
+        img =>
+          img.startIndex >= selectedImage.startIndex - 10 &&
+          img.startIndex <= selectedImage.startIndex + 10
       );
 
       if (matchingImage && matchingImage.id !== selectedImage.id) {
-        // Update to the new match with updated position
+        // Update to the new match with updated position/ID
         setSelectedImage(matchingImage);
       }
     }
@@ -316,6 +319,17 @@ export default function Editor() {
       setCode(newCode);
       URL.revokeObjectURL(imageUrl);
 
+      // Immediately update selectedImage with fresh position data
+      // (base64 changed, so we can't match by prefix anymore)
+      const detectedImages = detectBase64Images(newCode);
+      const freshImage = detectedImages.find(img =>
+        img.startIndex >= image.startIndex - 10 &&
+        img.startIndex <= image.startIndex + 10
+      );
+      if (freshImage) {
+        setSelectedImage(freshImage);
+      }
+
       if (import.meta.env.DEV) {
         console.log('[Image] Image replacement complete');
       }
@@ -389,6 +403,17 @@ export default function Editor() {
       );
 
       setCode(newCode);
+
+      // Immediately update selectedImage with fresh position data
+      // (base64 changed after dithering, so positions and IDs are different)
+      const detectedImages = detectBase64Images(newCode);
+      const freshImage = detectedImages.find(img =>
+        img.startIndex >= image.startIndex - 10 &&
+        img.startIndex <= image.startIndex + 10
+      );
+      if (freshImage) {
+        setSelectedImage(freshImage);
+      }
 
       if (import.meta.env.DEV) {
         console.log('[Image] Redithering complete');
