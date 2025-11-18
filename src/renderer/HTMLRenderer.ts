@@ -10,6 +10,10 @@ interface RenderState {
   underline: boolean;
   align: string;
   size: number;
+  flip: boolean;
+  invert: boolean;
+  width: number;
+  height: number;
 }
 
 interface HTMLRendererOptions {
@@ -45,6 +49,10 @@ export class HTMLRenderer {
       underline: false,
       align: 'left',
       size: 0,
+      flip: false,
+      invert: false,
+      width: 1,
+      height: 1,
     };
 
     let html = this.getHeader();
@@ -77,12 +85,36 @@ export class HTMLRenderer {
 
         case 'size':
           state.size = cmd.value as number;
+          // Also update width and height from the size byte
+          const sizeValue = cmd.value as number;
+          state.width = ((sizeValue & 0x30) >> 4) + 1;
+          state.height = (sizeValue & 0x0f) + 1;
+          break;
+
+        case 'flip':
+          state.flip = cmd.value as boolean;
+          break;
+
+        case 'invert':
+          state.invert = cmd.value as boolean;
           break;
 
         case 'image':
           // Render image placeholder with byte count
           const imageInfo = cmd.value as string || 'unknown size';
           currentLine += `<span class="image-placeholder">[IMAGE: ${imageInfo}]</span>`;
+          break;
+
+        case 'barcode':
+          // Render barcode placeholder with info
+          const barcodeInfo = cmd.value as string || 'unknown';
+          currentLine += `<span class="barcode-placeholder">[BARCODE: ${barcodeInfo}]</span>`;
+          break;
+
+        case 'qrcode':
+          // Render QR code placeholder with info
+          const qrcodeInfo = cmd.value as string || 'unknown';
+          currentLine += `<span class="qrcode-placeholder">[QR CODE: ${qrcodeInfo}]</span>`;
           break;
 
         case 'linefeed':
@@ -97,6 +129,10 @@ export class HTMLRenderer {
           state.underline = false;
           state.align = 'left';
           state.size = 0;
+          state.flip = false;
+          state.invert = false;
+          state.width = 1;
+          state.height = 1;
           break;
       }
     }
@@ -117,6 +153,7 @@ export class HTMLRenderer {
   ): string {
     let formatted = text;
     const tags: string[] = [];
+    const classes: string[] = [];
 
     if (state.bold) {
       tags.push('strong');
@@ -125,10 +162,33 @@ export class HTMLRenderer {
       tags.push('u');
     }
 
-    // Get size class
+    // Add flip class if enabled
+    if (state.flip) {
+      classes.push('flip');
+    }
+
+    // Add invert class if enabled
+    if (state.invert) {
+      classes.push('invert');
+    }
+
+    // Get size class (for legacy ESC ! command)
     const sizeClass = this.getSizeClass(state.size);
     if (sizeClass) {
-      formatted = `<span class="${sizeClass}">${formatted}</span>`;
+      classes.push(sizeClass);
+    }
+
+    // Add separate width/height classes if different from default
+    if (state.width > 1) {
+      classes.push(`width-${state.width}x`);
+    }
+    if (state.height > 1) {
+      classes.push(`height-${state.height}x`);
+    }
+
+    // Wrap with span if we have classes
+    if (classes.length > 0) {
+      formatted = `<span class="${classes.join(' ')}">${formatted}</span>`;
     }
 
     // Apply formatting tags
@@ -141,6 +201,10 @@ export class HTMLRenderer {
 
   private renderLine(content: string, state: RenderState): string {
     const alignClass = `align-${state.align}`;
+    // If content is empty or only whitespace, render as empty line without formatting
+    if (!content || content.trim().length === 0) {
+      return `<div class="receipt-line ${alignClass}">&nbsp;</div>\n`;
+    }
     return `<div class="receipt-line ${alignClass}">${content}</div>\n`;
   }
 
@@ -254,9 +318,43 @@ export class HTMLRenderer {
       filter: blur(0.3px);
     }
 
+    /* Individual width/height multipliers (1-8x) */
+    .width-2x { display: inline-block; transform: scaleX(2); transform-origin: left; }
+    .width-3x { display: inline-block; transform: scaleX(3); transform-origin: left; }
+    .width-4x { display: inline-block; transform: scaleX(4); transform-origin: left; }
+    .width-5x { display: inline-block; transform: scaleX(5); transform-origin: left; }
+    .width-6x { display: inline-block; transform: scaleX(6); transform-origin: left; }
+    .width-7x { display: inline-block; transform: scaleX(7); transform-origin: left; }
+    .width-8x { display: inline-block; transform: scaleX(8); transform-origin: left; }
+
+    .height-2x { display: inline-block; transform: scaleY(2); transform-origin: top; }
+    .height-3x { display: inline-block; transform: scaleY(3); transform-origin: top; }
+    .height-4x { display: inline-block; transform: scaleY(4); transform-origin: top; }
+    .height-5x { display: inline-block; transform: scaleY(5); transform-origin: top; }
+    .height-6x { display: inline-block; transform: scaleY(6); transform-origin: top; }
+    .height-7x { display: inline-block; transform: scaleY(7); transform-origin: top; }
+    .height-8x { display: inline-block; transform: scaleY(8); transform-origin: top; }
+
+    /* Flip (upside-down) effect */
+    .flip {
+      display: inline-block;
+      transform: rotate(180deg);
+    }
+
+    /* Invert (white on black) effect */
+    .invert {
+      background-color: #000;
+      color: #fff;
+      padding: 0 2px;
+    }
+
     strong {
       font-weight: bold;
       color: #000;
+    }
+
+    .invert strong {
+      color: #fff;
     }
 
     u {
@@ -274,6 +372,32 @@ export class HTMLRenderer {
       color: #666;
       font-size: 12px;
       border-radius: 3px;
+    }
+
+    .barcode-placeholder {
+      display: inline-block;
+      background: #fff;
+      border: 2px solid #333;
+      padding: 8px 12px;
+      margin: 4px 0;
+      color: #333;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      border-radius: 2px;
+      font-weight: bold;
+    }
+
+    .qrcode-placeholder {
+      display: inline-block;
+      background: #fff;
+      border: 2px solid #000;
+      padding: 10px;
+      margin: 4px 0;
+      color: #000;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      border-radius: 2px;
+      font-weight: bold;
     }
 
     /* Control panel */

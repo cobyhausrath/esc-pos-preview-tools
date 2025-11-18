@@ -139,6 +139,27 @@ export function ContextMenu({
 
   const handleConvertToBarcode = () => {
     const text = attributes.textContent || '';
+
+    // Validate barcode text
+    if (!text || text.trim().length === 0) {
+      alert('Cannot convert empty text to barcode');
+      return;
+    }
+
+    // Check for placeholder or invalid text patterns
+    if (text.includes('Click') || text.includes('Upload') || text.includes('IMAGE')) {
+      alert('Cannot convert placeholder text to barcode. Please use actual barcode data.');
+      return;
+    }
+
+    // CODE39 validation: alphanumeric + some special chars only
+    const code39Valid = /^[A-Z0-9\-. $/+%]+$/i.test(text.trim());
+    if (!code39Valid) {
+      if (!confirm(`Text contains characters that may not be valid for CODE39 barcodes. Continue anyway?`)) {
+        return;
+      }
+    }
+
     // Escape backslashes and single quotes for Python string safety
     const escapedText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const action: ContextMenuAction = {
@@ -151,6 +172,19 @@ export function ContextMenu({
 
   const handleConvertToQR = () => {
     const text = attributes.textContent || '';
+
+    // Validate QR text
+    if (!text || text.trim().length === 0) {
+      alert('Cannot convert empty text to QR code');
+      return;
+    }
+
+    // Check for placeholder or invalid text patterns
+    if (text.includes('Click') || text.includes('Upload') || text.includes('IMAGE')) {
+      alert('Cannot convert placeholder text to QR code. Please use actual data.');
+      return;
+    }
+
     // Escape backslashes and single quotes for Python string safety
     const escapedText = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const action: ContextMenuAction = {
@@ -248,7 +282,7 @@ export function ContextMenu({
             <strong>Font:</strong>
           </div>
 
-          {(['a', 'b', 'c'] as FontType[]).map((font) => (
+          {(['a', 'b'] as FontType[]).map((font) => (
             <div
               key={font}
               className="menu-item"

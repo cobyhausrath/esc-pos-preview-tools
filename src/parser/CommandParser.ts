@@ -79,6 +79,20 @@ export class CommandParser {
             }
             break;
 
+          case 0x56: // ESC V - Flip/upside-down mode
+            if (pos + 2 < buffer.length) {
+              const value = buffer[pos + 2];
+              commands.push({
+                type: 'flip',
+                value: value !== 0,
+                raw: [byte, nextByte, value],
+              });
+              pos += 3;
+            } else {
+              pos++;
+            }
+            break;
+
           case 0x2a: // ESC * - Bit Image (used for images)
             if (pos + 4 < buffer.length) {
               const mode = buffer[pos + 2];
@@ -123,7 +137,20 @@ export class CommandParser {
       else if (byte === 0x1d && pos + 1 < buffer.length) {
         const nextByte = buffer[pos + 1];
 
-        if (nextByte === 0x56) {
+        if (nextByte === 0x42) {
+          // GS B - Invert/reverse mode
+          if (pos + 2 < buffer.length) {
+            const value = buffer[pos + 2];
+            commands.push({
+              type: 'invert',
+              value: value !== 0,
+              raw: [byte, nextByte, value],
+            });
+            pos += 3;
+          } else {
+            pos += 2;
+          }
+        } else if (nextByte === 0x56) {
           // GS V - Cut paper
           const cutType = pos + 2 < buffer.length ? buffer[pos + 2] : 0;
           commands.push({
@@ -132,6 +159,86 @@ export class CommandParser {
             raw: [byte, nextByte, cutType],
           });
           pos += 3;
+        } else if (nextByte === 0x6b) {
+          // GS k - Barcode
+          if (pos + 3 < buffer.length) {
+            const barcodeType = buffer[pos + 2];
+            // Try to determine barcode data length
+            // Format varies: some use NUL-terminated strings, others use explicit length
+            let dataLength = 0;
+            let dataStart = pos + 3;
+
+            // Check if next byte is a length byte (for some barcode types)
+            if (barcodeType >= 65 && barcodeType <= 73) {
+              // Type A format (CODE39, etc) - NUL terminated
+              // Scan for NUL byte
+              for (let i = dataStart; i < buffer.length && i < dataStart + 255; i++) {
+                if (buffer[i] === 0x00) {
+                  dataLength = i - dataStart;
+                  break;
+                }
+              }
+            } else {
+              // Type B format - explicit length
+              dataLength = buffer[pos + 3];
+              dataStart = pos + 4;
+            }
+
+            if (dataLength > 0 && dataStart + dataLength <= buffer.length) {
+              const totalSize = (dataStart - pos) + dataLength + (barcodeType >= 65 && barcodeType <= 73 ? 1 : 0);
+              commands.push({
+                type: 'barcode',
+                value: `type ${barcodeType}, ${dataLength} bytes`,
+                raw: Array.from(buffer.subarray(pos, pos + totalSize)),
+              });
+              pos += totalSize;
+            } else {
+              // Can't determine size, mark as unknown
+              commands.push({
+                type: 'unknown',
+                raw: [byte, nextByte],
+              });
+              pos += 2;
+            }
+          } else {
+            commands.push({
+              type: 'unknown',
+              raw: [byte, nextByte],
+            });
+            pos += 2;
+          }
+        } else if (nextByte === 0x28) {
+          // GS ( ... - Function commands (includes QR code)
+          if (pos + 4 < buffer.length) {
+            const fn = buffer[pos + 2]; // Function code
+            const pL = buffer[pos + 3];
+            const pH = buffer[pos + 4];
+            const dataLength = pL + (pH * 256);
+
+            if (fn === 0x6b && dataLength > 0 && pos + 5 + dataLength <= buffer.length) {
+              // GS ( k - QR code function
+              const totalSize = 5 + dataLength;
+              commands.push({
+                type: 'qrcode',
+                value: `${dataLength} bytes`,
+                raw: Array.from(buffer.subarray(pos, pos + totalSize)),
+              });
+              pos += totalSize;
+            } else {
+              // Other function command
+              commands.push({
+                type: 'unknown',
+                raw: [byte, nextByte],
+              });
+              pos += 2;
+            }
+          } else {
+            commands.push({
+              type: 'unknown',
+              raw: [byte, nextByte],
+            });
+            pos += 2;
+          }
         } else if (nextByte === 0x76) {
           // GS v 0 - Print raster bit image
           // Format: GS v 0 m xL xH yL yH [data...]

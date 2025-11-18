@@ -163,6 +163,9 @@ validate_code(${JSON.stringify(code)})
           throw new Error('Code validation failed: Dangerous operations detected. Check that only allowed imports (escpos, PIL, io, base64) are used.');
         }
 
+        // Check if user code already ends with a cut command
+        const hasCutAtEnd = /p\.cut\s*\(\s*\)\s*(?:#.*)?$/.test(code.trim());
+
         // Execute the code with timeout
         await Promise.race([
           pyodide.runPythonAsync(`
@@ -171,8 +174,14 @@ from escpos.printer import Dummy
 # Create a dummy printer configured for ${printerProfile}
 p = Dummy(profile='${printerProfile}')
 
+# Reset printer to defaults before user code
+p.set()
+
 # Execute user code
 ${code}
+
+# Add cut if not already present
+${hasCutAtEnd ? '# Cut already added by user' : 'p.cut()'}
 
 # Get the output
 output = p.output
@@ -258,12 +267,7 @@ python_code
 
       if (pixelCount > MAX_PIXELS) {
         console.warn(`[Image] Image too large: ${width}x${height} (${pixelCount} pixels)`);
-        return `from escpos.printer import Dummy
-
-# Create printer configured for ${printerProfile}
-p = Dummy(profile='${printerProfile}')
-
-# Image too large
+        return `# Image too large
 p.set(align='center')
 p.text('IMAGE TOO LARGE\\n')
 p.text('${width}x${height} pixels\\n')
@@ -297,12 +301,7 @@ await micropip.install('Pillow')
         if (blob.size > MAX_BLOB_SIZE) {
           const sizeKB = Math.round(blob.size / 1024);
           console.warn(`[Image] Image file too large: ${sizeKB}KB`);
-          return `from escpos.printer import Dummy
-
-# Create printer configured for ${printerProfile}
-p = Dummy(profile='${printerProfile}')
-
-# Image file too large
+          return `# Image file too large
 p.set(align='center')
 p.text('IMAGE FILE TOO LARGE\\n')
 p.text('${sizeKB}KB (max ${Math.round(MAX_BLOB_SIZE / 1024)}KB)\\n')
@@ -319,13 +318,12 @@ p.set(align='left')
         }
 
         // Generate python-escpos code with embedded image
-        const code = `from escpos.printer import Dummy
+        // NOTE: This code is meant to be wrapped by runCode(), so it should NOT
+        // include the printer setup - only the user commands
+        const code = `# Image: ${width}x${height} dithered
 from PIL import Image
 import io
 import base64
-
-# Create printer configured for ${printerProfile}
-p = Dummy(profile='${printerProfile}')
 
 try:
     # Decode embedded image (${width}x${height} dithered)
@@ -353,12 +351,7 @@ finally:
         console.error('[Image] Failed to generate code:', err);
 
         // Fallback to placeholder if conversion fails
-        return `from escpos.printer import Dummy
-
-# Create printer configured for ${printerProfile}
-p = Dummy(profile='${printerProfile}')
-
-# Image encoding failed
+        return `# Image encoding failed
 p.set(align='center')
 p.text('IMAGE (${width}x${height})\\n')
 p.text('Failed to encode image\\n')

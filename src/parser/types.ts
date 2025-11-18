@@ -10,8 +10,12 @@ export type CommandType =
   | 'underline'
   | 'align'
   | 'size'
+  | 'flip'
+  | 'invert'
   | 'cut'
   | 'image'
+  | 'barcode'
+  | 'qrcode'
   | 'unknown';
 
 export interface Command {
