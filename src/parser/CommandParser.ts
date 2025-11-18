@@ -79,7 +79,7 @@ export class CommandParser {
             }
             break;
 
-          case 0x56: // ESC V - Flip/upside-down mode
+          case 0x7b: // ESC { - Flip/upside-down mode
             if (pos + 2 < buffer.length) {
               const value = buffer[pos + 2];
               commands.push({

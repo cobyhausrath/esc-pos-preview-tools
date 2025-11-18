@@ -131,7 +131,7 @@ export function ContextMenu({
       type: 'format',
       attribute: dimension,
       value,
-      pythonCode: `p.set(${dimension}=${value})`,
+      pythonCode: `p.set(custom_size=True, ${dimension}=${value})`,
     };
     onAction(lineNumber, action);
     onClose();
@@ -146,9 +146,9 @@ export function ContextMenu({
       return;
     }
 
-    // Check for placeholder or invalid text patterns
-    if (text.includes('Click') || text.includes('Upload') || text.includes('IMAGE')) {
-      alert('Cannot convert placeholder text to barcode. Please use actual barcode data.');
+    // Check for image placeholder patterns
+    if (text.startsWith('[IMAGE:') || text.startsWith('[BARCODE:') || text.startsWith('[QR CODE:')) {
+      alert('Cannot convert image or barcode placeholder to barcode. Please use actual text.');
       return;
     }
 
@@ -179,9 +179,9 @@ export function ContextMenu({
       return;
     }
 
-    // Check for placeholder or invalid text patterns
-    if (text.includes('Click') || text.includes('Upload') || text.includes('IMAGE')) {
-      alert('Cannot convert placeholder text to QR code. Please use actual data.');
+    // Check for image placeholder patterns
+    if (text.startsWith('[IMAGE:') || text.startsWith('[BARCODE:') || text.startsWith('[QR CODE:')) {
+      alert('Cannot convert image or barcode placeholder to QR code. Please use actual text.');
       return;
     }
 
